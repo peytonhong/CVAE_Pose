@@ -19,6 +19,7 @@ import imageio
 import cv2
 from IPython import display
 
+strategy = tf.distribute.MirroredStrategy()
 
 #from tensorflow.compat.v1 import ConfigProto
 #from tensorflow.compat.v1 import InteractiveSession
@@ -187,7 +188,9 @@ BATCH_SIZE = 200
 # it will be easier to see the improvement.
 random_vector_for_generation = tf.random.normal(
     shape=[num_examples_to_generate, latent_dim])
-model = CVAE(latent_dim)
+
+with strategy.scope():
+  model = CVAE(latent_dim)
 
 def generate_and_save_images(model, epoch, test_input):
   predictions = model.sample(test_input)
