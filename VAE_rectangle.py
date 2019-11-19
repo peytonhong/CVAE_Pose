@@ -178,9 +178,10 @@ def compute_apply_gradients(model, x, optimizer):
   gradients = tape.gradient(loss, model.trainable_variables)
   optimizer.apply_gradients(zip(gradients, model.trainable_variables))
   
-epochs = 100
-latent_dim = 50
+epochs = 120
+latent_dim = 1
 num_examples_to_generate = 16
+BATCH_SIZE = 200
 
 # keeping the random vector constant for generation (prediction) so
 # it will be easier to see the improvement.
@@ -199,12 +200,12 @@ def generate_and_save_images(model, epoch, test_input):
 
   # tight_layout minimizes the overlap between 2 sub-plots
   plt.savefig('image_at_epoch_{:04d}.png'.format(epoch))
-  plt.show()
+  # plt.show()
   
 #generate_and_save_images(model, 0, random_vector_for_generation)
 
 for epoch in range(1, epochs + 1):
-  train_dataset = generate_dataset(100)
+  train_dataset = generate_dataset(BATCH_SIZE)
   start_time = time.time()
   for train_x in train_dataset:
     compute_apply_gradients(model, train_x, optimizer)
@@ -226,8 +227,8 @@ for epoch in range(1, epochs + 1):
 def display_image(epoch_no):
   return PIL.Image.open('image_at_epoch_{:04d}.png'.format(epoch_no))
 
-plt.imshow(display_image(epochs))
-plt.axis('off')# Display images
+# plt.imshow(display_image(epochs))
+# plt.axis('off')# Display images
 
 anim_file = 'cvae.gif'
 
