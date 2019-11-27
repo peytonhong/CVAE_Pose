@@ -195,7 +195,7 @@ def generate_and_save_images(model, epoch, test_input):
       plt.axis('off')
 
   # tight_layout minimizes the overlap between 2 sub-plots
-  plt.savefig('image_at_epoch_{:04d}.png'.format(epoch))
+  plt.savefig('./results/image_at_epoch_{:04d}.png'.format(epoch))
   # plt.show()
 
 generate_and_save_images(model, 0, random_vector_for_generation)
