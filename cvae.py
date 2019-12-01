@@ -103,11 +103,11 @@ def compute_loss(model, x, y, pose_gt):
     logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
     logpz = log_normal_pdf(z, 0., 0.)                       # 수식이 좀 이상하다. z를 normal distribution과 닮아가도록 제한하는 역할
     logqz_x = log_normal_pdf(z, mean, logvar)               # 
-    return -tf.reduce_mean(logpx_z + logpz - logqz_x - pose_loss)
+    return -tf.reduce_mean(logpx_z + logpz - logqz_x - pose_loss), mean
 
 @tf.function
 def compute_apply_gradients(model, x, y, pose_gt, optimizer):
     with tf.GradientTape() as tape:
-        loss = compute_loss(model, x, y, pose_gt)
+        loss, _ = compute_loss(model, x, y, pose_gt)
     gradients = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))

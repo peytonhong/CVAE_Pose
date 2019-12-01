@@ -71,7 +71,7 @@ def main(args):
         os.remove(f)
 
     # Plot for manifold learning result
-    PMLR = plot_utils.Plot_Manifold_Learning_Result(RESULTS_DIR, 20, 20, 112, 112, 1.0, 5.0)
+    PMLR = plot_utils.Plot_Manifold_Learning_Result(RESULTS_DIR, 20, 20, 112, 112, 1.0, 3.0)
 
     loss_list = []
     elbo_prev = -np.inf
@@ -88,7 +88,7 @@ def main(args):
       if epoch % 1 == 0:
         loss = tf.keras.metrics.Mean()
         
-        loss(compute_loss(model, test_x, test_y, test_pose))
+        loss(compute_loss(model, test_x, test_y, test_pose)[0])
         elbo = -loss.result()
         display.clear_output(wait=False)
         
@@ -145,6 +145,25 @@ def main(args):
 
   elif args.command == "evaluate":
     model.load_weights('./checkpoints/cvae_rectangle_checkpoint')
+    eval_x, eval_y, eval_pose = generate_dataset(1000)
+    loss_result, z_mean = compute_loss(model, eval_x, eval_y, eval_pose)
+    loss = tf.keras.metrics.Mean()
+    loss(loss_result)
+    elbo = -loss.result()
+    print('Evaluation set ELBO: {} '.format(elbo))
+    
+    if z_mean.shape[1] == 2:
+      scattered = np.hstack((z_mean, eval_pose.reshape(-1,1))) #[z_mean1, z_mean2, pose]
+      scattered[scattered[:,2].argsort()]
+      plt.scatter(scattered[:,0], scattered[:,1], c=scattered[:,2])
+      plt.savefig('./results/scattered_z.png')
+      plt.close()
+
+      plt.scatter(scattered[:,2], scattered[:,0])
+      plt.scatter(scattered[:,2], scattered[:,1])
+      plt.savefig('./results/scattered_z_by_angle.png')
+      plt.close()
+
 
 
   else:

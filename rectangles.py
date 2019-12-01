@@ -28,7 +28,7 @@ def get_rectangles(NUM_IMAGES, HEIGHT, WIDTH):
         rec_size_input = (random_size, random_size)
         center_input = np.array([[x], [y]])
         center_output = np.array([[56], [56]])
-        theta_list.append(theta)
+        theta_list.append(theta*np.pi/180)
         img_input = np.zeros((HEIGHT, WIDTH, 1), dtype=np.uint8)
         img_output = np.zeros((HEIGHT, WIDTH, 1), dtype=np.uint8)
         cv2.fillPoly(img_input,  [get_points(rec_size_input,  center_input,  theta)], color=(255,255,255))
