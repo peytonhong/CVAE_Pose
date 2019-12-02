@@ -155,12 +155,17 @@ def main(args):
     if z_mean.shape[1] == 2:
       scattered = np.hstack((z_mean, eval_pose.reshape(-1,1))) #[z_mean1, z_mean2, pose]
       scattered[scattered[:,2].argsort()]
-      plt.scatter(scattered[:,0], scattered[:,1], c=scattered[:,2])
+      plt.scatter(scattered[:,0], scattered[:,1], c=scattered[:,2])      
+      plt.xlabel('z1')
+      plt.ylabel('z2')
       plt.savefig('./results/scattered_z.png')
       plt.close()
 
       plt.scatter(scattered[:,2], scattered[:,0])
       plt.scatter(scattered[:,2], scattered[:,1])
+      plt.xlabel('Angle [deg]')
+      plt.ylabel('z')
+      plt.legend(['z1', 'z2'])
       plt.savefig('./results/scattered_z_by_angle.png')
       plt.close()
 
