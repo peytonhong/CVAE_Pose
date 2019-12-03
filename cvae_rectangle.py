@@ -29,7 +29,7 @@ def argparse_args():
 """main function"""
 def main(args):  
 
-  test_x, test_y, test_pose = generate_dataset(100)
+  test_x, test_y, test_pose = generate_dataset(200)
 
   epochs = args.num_epochs
   latent_dim = args.latent_dim
@@ -71,7 +71,7 @@ def main(args):
         os.remove(f)
 
     # Plot for manifold learning result
-    PMLR = plot_utils.Plot_Manifold_Learning_Result(RESULTS_DIR, 20, 20, 112, 112, 1.0, 3.0)
+    PMLR = plot_utils.Plot_Manifold_Learning_Result(RESULTS_DIR, 20, 20, 112, 112, 1.0, 2.0)
 
     loss_list = []
     elbo_prev = -np.inf
@@ -81,14 +81,14 @@ def main(args):
     for epoch in range(1, epochs + 1):
       start_time = time.time()
       for _ in range(1000):
-        train_x, train_y, train_pose = generate_dataset(100)
+        train_x, train_y, train_pose = generate_dataset(100)        
         compute_apply_gradients(model, train_x, train_y, train_pose, optimizer)
       end_time = time.time()
 
       if epoch % 1 == 0:
         loss = tf.keras.metrics.Mean()
-        
-        loss(compute_loss(model, test_x, test_y, test_pose)[0])
+        loss_result, z_mean, est_pose = compute_loss(model, test_x, test_y, test_pose)
+        loss(loss_result)
         elbo = -loss.result()
         display.clear_output(wait=False)
         
@@ -114,6 +114,20 @@ def main(args):
         # save loss curve
         plt.plot(np.array(loss_list)[:,0], np.array(loss_list)[:,1])
         plt.savefig('./results/loss_curve.png')
+        plt.grid()
+        plt.close()
+
+        # Pose estimation result
+        pose_result = np.hstack((test_pose.reshape(-1,1), est_pose)) # [ground truth, estimated]
+        # pose_result = pose_result[pose_result[:,0].argsort()]
+        plt.plot([0,90], [0,90] ,'g')
+        plt.scatter(pose_result[:,0]*180/np.pi, pose_result[:,1]*180/np.pi)
+        plt.xlabel('Angle [deg]')
+        plt.ylabel('Angle [deg]')
+        plt.legend(['Ground truth', 'Estimated'])
+        plt.title('Rotation Angle Estimation Result')
+        plt.grid()
+        plt.savefig('./results/pose_result.png')
         plt.close()
 
     def display_image(epoch_no):
@@ -146,7 +160,7 @@ def main(args):
   elif args.command == "evaluate":
     model.load_weights('./checkpoints/cvae_rectangle_checkpoint')
     eval_x, eval_y, eval_pose = generate_dataset(1000)
-    loss_result, z_mean = compute_loss(model, eval_x, eval_y, eval_pose)
+    loss_result, z_mean, est_pose = compute_loss(model, eval_x, eval_y, eval_pose)
     loss = tf.keras.metrics.Mean()
     loss(loss_result)
     elbo = -loss.result()
@@ -154,21 +168,27 @@ def main(args):
     
     if z_mean.shape[1] == 2:
       scattered = np.hstack((z_mean, eval_pose.reshape(-1,1))) #[z_mean1, z_mean2, pose]
-      scattered[scattered[:,2].argsort()]
+      scattered = scattered[scattered[:,2].argsort()]
       plt.scatter(scattered[:,0], scattered[:,1], c=scattered[:,2])      
       plt.xlabel('z1')
       plt.ylabel('z2')
+      plt.grid()
       plt.savefig('./results/scattered_z.png')
       plt.close()
 
-      plt.scatter(scattered[:,2], scattered[:,0])
-      plt.scatter(scattered[:,2], scattered[:,1])
+      plt.scatter(scattered[:,2]*180/np.pi, scattered[:,0])
+      plt.scatter(scattered[:,2]*180/np.pi, scattered[:,1])
       plt.xlabel('Angle [deg]')
       plt.ylabel('z')
       plt.legend(['z1', 'z2'])
+      plt.grid()
       plt.savefig('./results/scattered_z_by_angle.png')
       plt.close()
-
+    print('eval_pose.shape', eval_pose.shape)
+    print('est_pose.shape', est_pose.shape)
+    print(eval_pose[:100]*180/np.pi)
+    print(est_pose[:100]*180/np.pi)
+    
 
 
   else:

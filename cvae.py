@@ -51,8 +51,10 @@ class CVAE(tf.keras.Model):
 
         self.pose_net = tf.keras.Sequential(
             [
-            tf.keras.layers.InputLayer(input_shape=(latent_dim*2,)),
-            tf.keras.layers.Dense(units=100),
+            # tf.keras.layers.InputLayer(input_shape=(latent_dim*2,)),
+            tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
+            tf.keras.layers.Dense(units=100, activation='relu'),
+            tf.keras.layers.Dense(units=100, activation='tanh'),
             tf.keras.layers.Dense(units=1)
             ]
         )
@@ -85,7 +87,7 @@ class CVAE(tf.keras.Model):
 def log_normal_pdf(sample, mean, logvar, raxis=1):
     log2pi = tf.math.log(2. * np.pi)
     return tf.reduce_sum(
-        -.5 * ((sample - mean) ** 2. * tf.exp(-logvar) + logvar + log2pi), # Monte Carlo estimate of single sample
+        -.5 * ((sample - mean) ** 2. * tf.exp(-logvar) + logvar + log2pi), # input z 값이 random sampling 되어 log를 취한 Gaussian distribution의 PDF 값을 계산하는 식
         axis=raxis)
 
 @tf.function
@@ -95,19 +97,19 @@ def compute_loss(model, x, y, pose_gt):
     x_logit = model.decode(z)
     cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x_logit, labels=y)
     
-    pose_est = model.pose_net(tf.reshape(tf.stack([mean, logvar], axis=1), (-1, model.latent_dim*2)))
-    pose_loss = tf.keras.losses.MSE(pose_est, pose_gt)
-    pose_loss = tf.dtypes.cast(pose_loss, dtype=tf.float32)
+    # pose_est = model.pose_net(tf.reshape(tf.stack([mean, logvar], axis=1), (-1, model.latent_dim*2)))
+    pose_est = model.pose_net(z)
+    pose_loss = tf.keras.losses.MSE(tf.reshape(pose_est, (-1,)), pose_gt)
     
     # ELBO를 계산하는 방법 중 Jensen's Inequality 방식을 적용한 수식: Monte Carlo estimator 방식 사용 (for simplicity)
     logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
-    logpz = log_normal_pdf(z, 0., 0.)                       # 수식이 좀 이상하다. z를 normal distribution과 닮아가도록 제한하는 역할
-    logqz_x = log_normal_pdf(z, mean, logvar)               # 
-    return -tf.reduce_mean(logpx_z + logpz - logqz_x - pose_loss), mean
+    logpz = log_normal_pdf(z, 0., 0.)                       # KL divergence term: D_KL = E[log q(z|x)] - E[log p(z)]로부터 나온 식
+    logqz_x = log_normal_pdf(z, mean, logvar)               # KL divergence term: D_KL = E[log q(z|x)] - E[log p(z)]로부터 나온 식
+    return -tf.reduce_mean(logpx_z + logpz - logqz_x) + pose_loss, mean, pose_est
 
 @tf.function
 def compute_apply_gradients(model, x, y, pose_gt, optimizer):
     with tf.GradientTape() as tape:
-        loss, _ = compute_loss(model, x, y, pose_gt)
+        loss, _, _ = compute_loss(model, x, y, pose_gt)
     gradients = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
