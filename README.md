@@ -20,3 +20,10 @@ Convolutional Variational Autoencoder for object pose estimation (Under construc
 ![latent space to angle](https://github.com/peytonhong/CVAE_Pose/blob/master/results/scattered_z.png)
 
 ![latent space to angle by angle](https://github.com/peytonhong/CVAE_Pose/blob/master/results/scattered_z_by_angle.png)
+
+# Rotation angle estimation result
+![Rotation angle estimation](https://github.com/peytonhong/CVAE_Pose/blob/master/results/pose_result.png)
+
+Rotation angle is almost properly estimated. 
+
+Angles with 0 degree and 90 degree are not properly trained since those angles are actually same for a rectangle.
