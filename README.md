@@ -27,3 +27,8 @@ Convolutional Variational Autoencoder for object pose estimation (Under construc
 Rotation angle is almost properly estimated. 
 
 Angles with 0 degree and 90 degree are not properly trained since those angles are actually same for a rectangle.
+
+# Loss of rotation angle in polar coordinate
+![pose loss](https://github.com/peytonhong/CVAE_Pose/blob/master/pose_loss.gif)
+
+Here, the rotation angle is represented in polar coordinate to minimize symmetry problem.
