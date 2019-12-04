@@ -11,7 +11,7 @@ Convolutional Variational Autoencoder for object pose estimation (Under construc
   * Rotation angle (pose)
 
 # Reconstructed image result
-![Reconstructed image](https://github.com/peytonhong/CVAE_Pose/blob/master/cvae.gif)
+![Reconstructed image](https://github.com/peytonhong/CVAE_Pose/blob/master/cvae_reconstruction.gif)
 
 # Latent space walking
 ![Latent space walking](https://github.com/peytonhong/CVAE_Pose/blob/master/results/PMLR_epoch_300.jpg)
@@ -22,7 +22,7 @@ Convolutional Variational Autoencoder for object pose estimation (Under construc
 ![latent space to angle by angle](https://github.com/peytonhong/CVAE_Pose/blob/master/results/scattered_z_by_angle.png)
 
 # Rotation angle estimation result
-![Rotation angle estimation](https://github.com/peytonhong/CVAE_Pose/blob/master/results/pose_result.png)
+![Rotation angle estimation](https://github.com/peytonhong/CVAE_Pose/blob/master/results/pose_result.gif)
 
 Rotation angle is almost properly estimated. 
 
