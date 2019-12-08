@@ -27,7 +27,7 @@ def get_rectangles(NUM_IMAGES, HEIGHT, WIDTH):
         random_size = int(np.random.rand(1)*20 + 20)   # random integer number between 20 and 40 
         rec_size_input = (random_size, random_size)
         center_input = np.array([[x], [y]])
-        center_output = np.array([[56], [56]])
+        center_output = np.array([[64], [64]])
         theta_list.append(theta*np.pi/180)
         img_input = np.zeros((HEIGHT, WIDTH, 1), dtype=np.uint8)
         img_output = np.zeros((HEIGHT, WIDTH, 1), dtype=np.uint8)
@@ -35,14 +35,14 @@ def get_rectangles(NUM_IMAGES, HEIGHT, WIDTH):
         cv2.fillPoly(img_output, [get_points(rec_size_output, center_output, theta)], color=(255,255,255))
         imgs_input.append(img_input)
         imgs_output.append(img_output)
-    return np.array(imgs_input), np.array(imgs_output), np.array(theta_list)
+    return np.array(imgs_input), np.array(imgs_output), np.array(theta_list, dtype=np.float32)
 
 def generate_dataset(BATCH_SIZE):
     '''
     Input image: rectangle images of various {position, size, rotation}.
     Output image: rectangle images of one {position, size} but various rotation angles as input image.
     '''
-    HEIGHT, WIDTH = 112, 112
+    HEIGHT, WIDTH = 128, 128
     images_input, images_output, theta_list = get_rectangles(BATCH_SIZE, HEIGHT, WIDTH)
     images_input = images_input.astype(np.float32) / 255.
     images_output = images_output.astype(np.float32) / 255.
