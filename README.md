@@ -11,15 +11,13 @@ Convolutional Variational Autoencoder for object pose estimation (Pytorch versio
   * Rotation angle (pose)
 
 # Reconstructed image
-![Reconstructed image](https://github.com/peytonhong/CVAE_Pose/blob/cvae_pytorch/results/image_at_epoch_0199.png)
+![Reconstructed image](https://github.com/peytonhong/CVAE_Pose/blob/cae_pytorch/results/image_at_epoch_0099.png)
 
 # 1D pose estimation result
-![1D Pose estimation z_dim 2](https://github.com/peytonhong/CVAE_Pose/blob/master/results/pose_result_z_dim_2.png)
+![1D Pose estimation z_dim 2](https://github.com/peytonhong/CVAE_Pose/blob/cae_pytorch/results/pose_result_z_dim_2.png)
 
-Pose loss is about 0.07 deg at z_dim=2
+Pose loss of AE at z_dim=2 is about 0.1 deg.
 
-![1D Pose estimation z_dim 20](https://github.com/peytonhong/CVAE_Pose/blob/master/results/pose_result_z_dim_20.png)
+Pose loss of VAE at z_dim=2 is about 0.07 deg.
 
-Pose loss is about 0.09 deg at z_dim=20
-
-Pose loss at z_dim=128 is large (60 deg). These results give a lesson that z_dim is the small the better.
+This result shows that VAE is more accurate than AE for 1d pose estimation.
