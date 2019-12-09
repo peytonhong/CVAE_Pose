@@ -20,4 +20,4 @@ Pose loss of AE at z_dim=2 is about 0.1 deg.
 
 Pose loss of VAE at z_dim=2 is about 0.07 deg.
 
-This result shows that VAE is more accurate than AE for 1d pose estimation.
+This result shows that VAE is more accurate than AE for 1d pose estimation. (But both results are actually very similar.)
