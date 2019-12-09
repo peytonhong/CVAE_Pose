@@ -20,6 +20,7 @@ def argparse_args():
   parser.add_argument('command', help="'train' or 'evaluate'")
   parser.add_argument('--latent_dim', default=2, type=int, help="Dimension of latent vector")
   parser.add_argument('--num_epochs', default=200, type=int, help="The number of epochs to run")
+  parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
 
   return parser.parse_args()
 
@@ -126,6 +127,7 @@ def main(args):
     INPUT_DIM = (128, 128) # size of each input (width, height)
     LATENT_DIM = args.latent_dim     # latent vector dimension
     lr = 1e-3           # learning rate
+    max_channel = args.max_channel
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # train_iterator = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
@@ -133,10 +135,10 @@ def main(args):
     random_vector_for_generation = torch.randn(size=[16, LATENT_DIM]).to(device)
 
     # encoder
-    encoder = Encoder(INPUT_DIM, LATENT_DIM)
+    encoder = Encoder(INPUT_DIM, LATENT_DIM, max_channel=max_channel)
 
     # decoder
-    decoder = Decoder(LATENT_DIM, INPUT_DIM)
+    decoder = Decoder(LATENT_DIM, INPUT_DIM, max_channel=max_channel)
 
     # pose
     poseNet = Pose(LATENT_DIM)
@@ -231,7 +233,7 @@ def main(args):
         print(f'This is evaluation mode.')
         model = torch.load('./checkpoints/model_best.pth.tar')
 
-        BATCH_SIZE_TEST = 1000
+        BATCH_SIZE_TEST = 100
         test_loss, pose_loss = test(model, BATCH_SIZE_TEST, device, generate_plot=True)
         test_loss /= BATCH_SIZE_TEST
         print(f'Test Loss: {test_loss:.2f}, Pose Loss: {pose_loss*180/np.pi:.5f} [deg]')

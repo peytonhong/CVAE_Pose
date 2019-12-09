@@ -7,7 +7,7 @@ class Encoder(nn.Module):
     ''' This the encoder part of VAE
 
     '''
-    def __init__(self, input_dim, z_dim):
+    def __init__(self, input_dim, z_dim, max_channel):
         '''
         Args:
             input_dim: A integer indicating the size of input (in case of MNIST 28 * 28).
@@ -15,18 +15,18 @@ class Encoder(nn.Module):
             z_dim: A integer indicating the latent dimension.
         '''
         super().__init__()
-
+        self.max_channel = int(max_channel)
         # self.linear = nn.Linear(input_dim, hidden_dim)
         # self.mu = nn.Linear(hidden_dim, z_dim)
         # self.var = nn.Linear(hidden_dim, z_dim)
         self.input_dim = input_dim
-        self.fc_input_dim = int((input_dim[0]/16)*(input_dim[1]/16)*128)
+        self.fc_input_dim = int((input_dim[0]/16)*(input_dim[1]/16)*self.max_channel)
         self.z_dim = z_dim
         self.maxpool =  nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv1 = nn.Conv2d(in_channels=1,   out_channels=16, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1)
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels=1,                        out_channels=int(self.max_channel/8), kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=int(self.max_channel/8),  out_channels=int(self.max_channel/4), kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=int(self.max_channel/4),  out_channels=int(self.max_channel/2), kernel_size=3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(in_channels=int(self.max_channel/2),  out_channels=int(self.max_channel),   kernel_size=3, stride=1, padding=1)
         # self.z_mu = nn.Linear(in_features=self.fc_input_dim, out_features=z_dim)
         # self.z_var= nn.Linear(in_features=self.fc_input_dim, out_features=z_dim)
         self.fc= nn.Linear(in_features=self.fc_input_dim, out_features=z_dim*2)
@@ -38,7 +38,7 @@ class Encoder(nn.Module):
         x = self.maxpool(F.relu(input=self.conv2(x)))
         x = self.maxpool(F.relu(input=self.conv3(x)))
         x = self.maxpool(F.relu(input=self.conv4(x)))
-        x = x.view(-1, int(128*(self.input_dim[0]/16)*(self.input_dim[1]/16)))
+        x = x.view(-1, int(self.max_channel*(self.input_dim[0]/16)*(self.input_dim[1]/16)))
         # hidden is of shape [batch_size, hidden_dim]
         z = self.fc(x)
         z_mu = z[:, :self.z_dim]
@@ -53,7 +53,7 @@ class Decoder(nn.Module):
     ''' This the decoder part of VAE
 
     '''
-    def __init__(self, z_dim, output_dim):
+    def __init__(self, z_dim, output_dim, max_channel):
         '''
         Args:
             z_dim: A integer indicating the latent size.
@@ -61,20 +61,21 @@ class Decoder(nn.Module):
             output_dim: A integer indicating the output dimension (in case of MNIST it is 28 * 28)
         '''
         super().__init__()
-        self.output_dim = output_dim
-        self.fc_output_dim = int((output_dim[0]/16)*(output_dim[1]/16)*128)
+        self.max_channel = int(max_channel)
+        self.output_dim = output_dim        
+        self.fc_output_dim = int((output_dim[0]/16)*(output_dim[1]/16)*self.max_channel)
         # self.linear = nn.Linear(z_dim, hidden_dim)
         # self.out = nn.Linear(hidden_dim, output_dim)
         self.fc = nn.Linear(in_features=z_dim, out_features=self.fc_output_dim)
-        self.dconv1 = nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dconv2 = nn.ConvTranspose2d(in_channels=64, out_channels=32, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dconv3 = nn.ConvTranspose2d(in_channels=32, out_channels=16, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dconv4 = nn.ConvTranspose2d(in_channels=16, out_channels=1,   kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dconv1 = nn.ConvTranspose2d(in_channels=int(self.max_channel),      out_channels=int(self.max_channel/2), kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dconv2 = nn.ConvTranspose2d(in_channels=int(self.max_channel/2),    out_channels=int(self.max_channel/4), kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dconv3 = nn.ConvTranspose2d(in_channels=int(self.max_channel/4),    out_channels=int(self.max_channel/8), kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=1,   kernel_size=3, stride=2, padding=1, output_padding=1)
 
     def forward(self, x):
         # x is of shape [batch_size, latent_dim]
         x = self.fc(x)
-        x = x.view(-1, 128, int(self.output_dim[0]/16), int(self.output_dim[1]/16))
+        x = x.view(-1, self.max_channel, int(self.output_dim[0]/16), int(self.output_dim[1]/16))
         x = F.relu(self.dconv1(x))
         x = F.relu(self.dconv2(x))
         x = F.relu(self.dconv3(x))
