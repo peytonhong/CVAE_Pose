@@ -22,8 +22,8 @@ class Encoder(nn.Module):
         self.input_dim = input_dim
         self.fc_input_dim = int((input_dim[0]/16)*(input_dim[1]/16)*self.max_channel)
         self.z_dim = z_dim
-        self.maxpool =  nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv1 = nn.Conv2d(in_channels=1,                        out_channels=int(self.max_channel/8), kernel_size=3, stride=1, padding=1)
+        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv1 = nn.Conv2d(in_channels=3,                        out_channels=int(self.max_channel/8), kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(in_channels=int(self.max_channel/8),  out_channels=int(self.max_channel/4), kernel_size=3, stride=1, padding=1)
         self.conv3 = nn.Conv2d(in_channels=int(self.max_channel/4),  out_channels=int(self.max_channel/2), kernel_size=3, stride=1, padding=1)
         self.conv4 = nn.Conv2d(in_channels=int(self.max_channel/2),  out_channels=int(self.max_channel),   kernel_size=3, stride=1, padding=1)
@@ -70,7 +70,7 @@ class Decoder(nn.Module):
         self.dconv1 = nn.ConvTranspose2d(in_channels=int(self.max_channel),      out_channels=int(self.max_channel/2), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv2 = nn.ConvTranspose2d(in_channels=int(self.max_channel/2),    out_channels=int(self.max_channel/4), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv3 = nn.ConvTranspose2d(in_channels=int(self.max_channel/4),    out_channels=int(self.max_channel/8), kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=1,   kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=3,   kernel_size=3, stride=2, padding=1, output_padding=1)
 
     def forward(self, x):
         # x is of shape [batch_size, latent_dim]
@@ -131,18 +131,36 @@ class VAE(nn.Module):
 
         return predicted, z_mu, z_var, pose_estimate
 
+
+class AE(nn.Module):
+    ''' This is the AE, which takes a encoder and decoder.
+    '''
+    def __init__(self, enc, dec, pose):
+        super().__init__()
+
+        self.enc = enc
+        self.dec = dec
+        self.pose = pose
+
+    def forward(self, x):
+        z_mu, z_var = self.enc(x)
+        predicted = self.dec(z_mu)
+        pose_estimate = self.pose(z_mu)
+
+        return predicted, z_mu, z_var, pose_estimate
+
+
 def to_polar(theta, theta_sym):
     sym_ratio = 360/theta_sym
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
 def generate_and_save_images(model, epoch, test_input):
     predictions = model.dec(test_input).cpu().detach().numpy()
-        
     fig = plt.figure(figsize=(4,4))
 
     for i in range(predictions.shape[0]):
         plt.subplot(4, 4, i+1)
-        plt.imshow(predictions[i, 0, :, :], cmap='gray')
+        plt.imshow(predictions[i].transpose([1,2,0]), cmap='gray')
         plt.axis('off')
 
     # tight_layout minimizes the overlap between 2 sub-plots

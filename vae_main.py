@@ -3,11 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
-
+import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from vae_module import *
-from rectangles import *
+# from rectangles import *
+from linemod_load import LineModDataset, ToTensor
 import os
 import glob
 import time
@@ -21,41 +22,45 @@ def argparse_args():
   parser.add_argument('--latent_dim', default=2, type=int, help="Dimension of latent vector")
   parser.add_argument('--num_epochs', default=200, type=int, help="The number of epochs to run")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
+  parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
+  parser.add_argument('--plot_recon', default=False, type=bool, help="True: creates reconstructed image on each epoch")
 
   return parser.parse_args()
 
-def train(model, TRAIN_STEPS, BATCH_SIZE, device, optimizer):    
+def train(model, dataset, device, optimizer, vae_mode):
     # set the train mode
     model.train()
     # loss of the epoch
     train_loss = 0
-    for _ in range(TRAIN_STEPS):        
-        x, y, theta = generate_dataset(BATCH_SIZE)
-        x = x.transpose([0,3,1,2])
-        y = y.transpose([0,3,1,2])
-        x, y, theta = torch.tensor(x), torch.tensor(y), torch.tensor(theta)
+    for _, sampled_batch in enumerate(dataset):        
+        x = sampled_batch['image_cropped']
+        y = sampled_batch['image_cropped']
+        theta = sampled_batch['pose'][:,0]
         x, y, theta = x.to(device), y.to(device), theta.to(device)
-        # reshape the data into [batch_size, 784]
-        # x = x.view(-1, INPUT_DIM)
-        
+                
         # update the gradients to zero
         optimizer.zero_grad()
-
         # forward pass
         x_sample, z_mu, z_var, pose_est = model(x)
         # reconstruction loss : the lower the better (negative log likelihood)
-        recon_loss = F.binary_cross_entropy(x_sample, y, reduction='sum')
-        # kl divergence loss : the lower the better
-        kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
+        # recon_loss = F.binary_cross_entropy(x_sample, y, reduction='sum')
+        recon_loss = F.mse_loss(x_sample, y, reduction='mean')
+        if vae_mode:    
+            # kl divergence loss : the lower the better
+            kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
+
         # pose loss    
         pose_est = pose_est.view(-1,)
-        pose_est_polar = to_polar(pose_est, theta_sym=90)    
-        pose_gt_polar = to_polar(theta, theta_sym=90)
-        pose_loss = F.mse_loss(pose_est_polar, pose_gt_polar, reduction='mean')
+        pose_est_polar = to_polar(pose_est, theta_sym=360)    
+        pose_gt_polar = to_polar(theta, theta_sym=360)
+        pose_loss = F.mse_loss(pose_est_polar, pose_gt_polar.view(-1), reduction='mean')
 
-        # ELBO (Evidence lower bound): the higher the better
-        ELBO = recon_loss + kl_loss
-        loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
+        if vae_mode:
+            # ELBO (Evidence lower bound): the higher the better
+            ELBO = recon_loss + kl_loss
+            loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
+        else:
+            loss = recon_loss + pose_loss
 
         # backward pass
         loss.backward()
@@ -66,7 +71,7 @@ def train(model, TRAIN_STEPS, BATCH_SIZE, device, optimizer):
 
     return train_loss
 
-def test(model, BATCH_SIZE, device, generate_plot=False):
+def test(model, dataset, device, generate_plot, vae_mode):
     # set the evaluation mode
     model.eval()
     # test loss for the data
@@ -74,40 +79,45 @@ def test(model, BATCH_SIZE, device, generate_plot=False):
 
     # we don't need to track the gradients, since we are not updating the parameters during evaluation / testing
     with torch.no_grad():
-        x, y, theta = generate_dataset(BATCH_SIZE)
-        x = x.transpose([0,3,1,2])
-        y = y.transpose([0,3,1,2])
-        # for i, (x, y, theta) in enumerate(generate_dataset(BATCH_SIZE)):
-        # for x, y, theta in zip(test_x, test_y, test_theta):
-        # reshape the data
-        # x = x.view(-1, 28 * 28)
-        x, y, theta = torch.tensor(x), torch.tensor(y), torch.tensor(theta)
-        x, y, theta = x.to(device), y.to(device), theta.to(device)
-        # forward pass
-        x_sample, z_mu, z_var, pose_est = model(x)
-        # reconstruction loss
-        recon_loss = F.binary_cross_entropy(x_sample, y, reduction='sum')
-        
-        # kl divergence loss
-        kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
-        
-        # pose loss
-        pose_est = pose_est.view(-1,)
-        pose_est_polar = to_polar(pose_est, theta_sym=90)    
-        pose_gt_polar = to_polar(theta, theta_sym=90)
-        pose_loss = F.mse_loss(pose_est_polar, pose_gt_polar, reduction='mean')
+        for i, sampled_batch in enumerate(dataset):        
+            x = sampled_batch['image_cropped']
+            y = sampled_batch['image_cropped']
+            theta = sampled_batch['pose'][:,0]
+            x, y, theta = x.to(device), y.to(device), theta.to(device)
+            # forward pass
+            x_sample, z_mu, z_var, pose_est = model(x)
+            # reconstruction loss
+            # recon_loss = F.binary_cross_entropy(x_sample, y, reduction='sum')
+            recon_loss = F.mse_loss(x_sample, y, reduction='mean')
 
-        # total loss
-        ELBO = recon_loss + kl_loss
-        loss = ELBO + pose_loss
-        test_loss += loss.item()        
+            if vae_mode:
+                # kl divergence loss
+                kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
+            
+            # pose loss
+            pose_est = pose_est.view(-1,)
+            pose_est_polar = to_polar(pose_est, theta_sym=360)    
+            pose_gt_polar = to_polar(theta, theta_sym=360)
+            pose_loss = F.mse_loss(pose_est_polar, pose_gt_polar.view(-1), reduction='mean')
+
+            if vae_mode:
+                # total loss
+                ELBO = recon_loss + kl_loss
+                loss = ELBO + pose_loss
+            else:
+                loss = recon_loss + pose_loss
+
+            test_loss += loss.item()        
+            if i == 4:
+                break
     
+
     if generate_plot:
         # Pose estimation result
         pose_result = np.hstack((theta.cpu().reshape(-1,1), pose_est.cpu().numpy().reshape(-1,1))) # [ground truth, estimated]
         # pose_result = pose_result[pose_result[:,0].argsort()]
-        plt.plot([0,90], [0,90] ,'g')
-        plt.scatter(pose_result[:,0]*180/np.pi, pose_result[:,1]*180/np.pi % 90)   # remnant of symmetric angle
+        plt.plot([0,180], [0,180] ,'g')
+        plt.scatter(pose_result[:,0]*180/np.pi, pose_result[:,1]*180/np.pi % 360)   # remnant of symmetric angle
         plt.xlabel('Angle [deg]')
         plt.ylabel('Angle [deg]')
         plt.legend(['Ground truth', 'Estimated'])
@@ -121,8 +131,8 @@ def test(model, BATCH_SIZE, device, generate_plot=False):
 
 def main(args):    
 
-    BATCH_SIZE = 100     # number of data points in each batch
-    TRAIN_STEPS = 100    # number of train steps in each epoch. (number of data in each epoch = BATCH_SIZE * TRAIN_STEPS)
+    BATCH_SIZE = 60     # number of data points in each batch
+    
     N_EPOCHS = args.num_epochs       # times to run the model on complete data
     INPUT_DIM = (128, 128) # size of each input (width, height)
     LATENT_DIM = args.latent_dim     # latent vector dimension
@@ -132,6 +142,11 @@ def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # train_iterator = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     # test_iterator = DataLoader(test_dataset, batch_size=BATCH_SIZE)
+    transform = transforms.Compose([ToTensor()])
+    lm_dataset = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', object_number=9, transform=transform) # for duck object
+    train_iterator = DataLoader(dataset=lm_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    test_iterator = DataLoader(dataset=lm_dataset, batch_size=BATCH_SIZE, shuffle=True)
+
     random_vector_for_generation = torch.randn(size=[16, LATENT_DIM]).to(device)
 
     # encoder
@@ -143,27 +158,18 @@ def main(args):
     # pose
     poseNet = Pose(LATENT_DIM)
 
-    # vae
-    model = VAE(encoder, decoder, poseNet).to(device)
+    if args.vae_mode:
+        # Variational Autoencoder
+        model = VAE(encoder, decoder, poseNet).to(device)
+    else:
+        # Autoencoder
+        model = AE(encoder, decoder, poseNet).to(device)
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     if args.command == 'train':
 
-        # transforms = transforms.Compose([transforms.ToTensor()])
-        # train_dataset = datasets.MNIST(
-        #     './data',
-        #     train=True,
-        #     download=True,
-        #     transform=transforms)
-
-        # test_dataset = datasets.MNIST(
-        #     './data',
-        #     train=False,
-        #     download=True,
-        #     transform=transforms
-        # )
         # RESULTS_DIR
         RESULTS_DIR = 'results'
         try:
@@ -182,18 +188,19 @@ def main(args):
 
             start_time = time.time()
 
-            train_loss = train(model, TRAIN_STEPS, BATCH_SIZE, device, optimizer)
-            test_loss, pose_loss = test(model, BATCH_SIZE, device, generate_plot=False)
+            train_loss = train(model, train_iterator, device, optimizer, vae_mode=args.vae_mode)
+            test_loss, pose_loss = test(model, test_iterator, device, generate_plot=args.plot_recon, vae_mode=args.vae_mode)
             
             end_time = time.time()
             
-            train_loss /= TRAIN_STEPS*BATCH_SIZE
-            test_loss /= BATCH_SIZE
+            train_loss /= len(lm_dataset)
+            test_loss /= BATCH_SIZE*4
 
-            print(f'Epoch {e}, Train Loss: {train_loss:.2f}, Test Loss: {test_loss:.2f}, Pose Loss: {pose_loss*180/np.pi:.5f} [deg], Time per an epoch: {(end_time - start_time):.2f}')
+            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss*180/np.pi:.5f} [deg], Time per an epoch: {(end_time - start_time):.2f}')
             
-            # reconstruction from random latent variable
-            generate_and_save_images(model, e, random_vector_for_generation)
+            if args.plot_recon:
+                # reconstruction from random latent variable
+                generate_and_save_images(model, e, random_vector_for_generation)
 
             # save loss curve
             loss_list.append([e, train_loss, test_loss])
@@ -233,10 +240,10 @@ def main(args):
         print(f'This is evaluation mode.')
         model = torch.load('./checkpoints/model_best.pth.tar')
 
-        BATCH_SIZE_TEST = 100
-        test_loss, pose_loss = test(model, BATCH_SIZE_TEST, device, generate_plot=True)
-        test_loss /= BATCH_SIZE_TEST
-        print(f'Test Loss: {test_loss:.2f}, Pose Loss: {pose_loss*180/np.pi:.5f} [deg]')
+        
+        test_loss, pose_loss = test(model, test_iterator, device, generate_plot=True, vae_mode=args.vae_mode)
+        test_loss /= BATCH_SIZE*4
+        print(f'Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss*180/np.pi:.5f} [deg]')
         
     else:
         print("'{}' is not recognized. Use 'train' or 'evaluate'".format(args.command))
