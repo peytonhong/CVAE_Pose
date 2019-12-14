@@ -35,8 +35,8 @@ def train(model, dataset, device, optimizer, vae_mode):
     for _, sampled_batch in enumerate(dataset):        
         x = sampled_batch['image_cropped']
         y = sampled_batch['image_cropped']
-        theta = sampled_batch['pose'][:,0]
-        x, y, theta = x.to(device), y.to(device), theta.to(device)
+        pose_gt = sampled_batch['pose'] # (N,9)
+        x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
                 
         # update the gradients to zero
         optimizer.zero_grad()
@@ -49,11 +49,10 @@ def train(model, dataset, device, optimizer, vae_mode):
             # kl divergence loss : the lower the better
             kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
 
-        # pose loss    
-        pose_est = pose_est.view(-1,)
-        pose_est_polar = to_polar(pose_est, theta_sym=360)    
-        pose_gt_polar = to_polar(theta, theta_sym=360)
-        pose_loss = F.mse_loss(pose_est_polar, pose_gt_polar.view(-1), reduction='mean')
+        # pose loss        
+        # pose_est_polar = to_polar(pose_est, theta_sym=360)    
+        # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
+        pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
         if vae_mode:
             # ELBO (Evidence lower bound): the higher the better
@@ -82,8 +81,8 @@ def test(model, dataset, device, generate_plot, vae_mode):
         for i, sampled_batch in enumerate(dataset):        
             x = sampled_batch['image_cropped']
             y = sampled_batch['image_cropped']
-            theta = sampled_batch['pose'][:,0]
-            x, y, theta = x.to(device), y.to(device), theta.to(device)
+            pose_gt = sampled_batch['pose'] # (N,9)
+            x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
             # forward pass
             x_sample, z_mu, z_var, pose_est = model(x)
             # reconstruction loss
@@ -95,10 +94,9 @@ def test(model, dataset, device, generate_plot, vae_mode):
                 kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
             
             # pose loss
-            pose_est = pose_est.view(-1,)
-            pose_est_polar = to_polar(pose_est, theta_sym=360)    
-            pose_gt_polar = to_polar(theta, theta_sym=360)
-            pose_loss = F.mse_loss(pose_est_polar, pose_gt_polar.view(-1), reduction='mean')
+            # pose_est_polar = to_polar(pose_est, theta_sym=360)    
+            # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
+            pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
             if vae_mode:
                 # total loss
@@ -114,7 +112,7 @@ def test(model, dataset, device, generate_plot, vae_mode):
 
     if generate_plot:
         # Pose estimation result
-        pose_result = np.hstack((theta.cpu().reshape(-1,1), pose_est.cpu().numpy().reshape(-1,1))) # [ground truth, estimated]
+        pose_result = np.hstack((pose_gt.cpu().reshape(-1,1), pose_est.cpu().numpy().reshape(-1,1))) # [ground truth, estimated]
         # pose_result = pose_result[pose_result[:,0].argsort()]
         plt.plot([0,180], [0,180] ,'g')
         plt.scatter(pose_result[:,0]*180/np.pi, pose_result[:,1]*180/np.pi % 360)   # remnant of symmetric angle
@@ -196,7 +194,7 @@ def main(args):
             train_loss /= len(lm_dataset)
             test_loss /= BATCH_SIZE*4
 
-            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss*180/np.pi:.5f} [deg], Time per an epoch: {(end_time - start_time):.2f}')
+            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss:.8f}, Time per an epoch: {(end_time - start_time):.2f}')
             
             if args.plot_recon:
                 # reconstruction from random latent variable
@@ -243,7 +241,7 @@ def main(args):
         
         test_loss, pose_loss = test(model, test_iterator, device, generate_plot=True, vae_mode=args.vae_mode)
         test_loss /= BATCH_SIZE*4
-        print(f'Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss*180/np.pi:.5f} [deg]')
+        print(f'Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss:.8f}')
         
     else:
         print("'{}' is not recognized. Use 'train' or 'evaluate'".format(args.command))

@@ -93,7 +93,7 @@ class Pose(nn.Module):
 
         self.fc1 = nn.Linear(in_features=z_dim, out_features=100)
         self.fc2 = nn.Linear(in_features=100, out_features=100)
-        self.fc3 = nn.Linear(in_features=100, out_features=1)
+        self.fc3 = nn.Linear(in_features=100, out_features=9)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
