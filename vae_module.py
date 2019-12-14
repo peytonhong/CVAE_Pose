@@ -98,9 +98,13 @@ class Pose(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = torch.tanh(self.fc2(x))
-        x = self.fc3(x)
-        
-        return x
+        x = self.fc3(x) # (N,9)
+
+        # Rotation matrix refinement to make det(R)=1 (referenced from Geonho Cha's paper)
+        U, S, V = torch.svd(x.view(-1,3,3))
+        R_hat = torch.matmul(U, V.transpose(1,2)) # R_hat = U*V', det(R_hat)=1 since U and V are orthogonal matrices.
+
+        return R_hat.view(-1,9) # (N,9)
 
 
 class VAE(nn.Module):
@@ -155,9 +159,9 @@ def to_polar(theta, theta_sym):
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
 def generate_and_save_images(model, epoch, test_input):
-    predictions = model.dec(test_input).cpu().detach().numpy()
+    # predictions = model.dec(test_input).cpu().detach().numpy()
+    predictions = test_input.cpu().detach().numpy()
     fig = plt.figure(figsize=(4,4))
-
     for i in range(predictions.shape[0]):
         plt.subplot(4, 4, i+1)
         plt.imshow(predictions[i].transpose([1,2,0]), cmap='gray')

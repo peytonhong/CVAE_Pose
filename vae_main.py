@@ -70,7 +70,7 @@ def train(model, dataset, device, optimizer, vae_mode):
 
     return train_loss
 
-def test(model, dataset, device, generate_plot, vae_mode):
+def test(model, dataset, device, vae_mode, test_iter):
     # set the evaluation mode
     model.eval()
     # test loss for the data
@@ -106,25 +106,25 @@ def test(model, dataset, device, generate_plot, vae_mode):
                 loss = recon_loss + pose_loss
 
             test_loss += loss.item()        
-            if i == 4:
+            if i == test_iter:
                 break
     
 
-    if generate_plot:
-        # Pose estimation result
-        pose_result = np.hstack((pose_gt.cpu().reshape(-1,1), pose_est.cpu().numpy().reshape(-1,1))) # [ground truth, estimated]
-        # pose_result = pose_result[pose_result[:,0].argsort()]
-        plt.plot([0,180], [0,180] ,'g')
-        plt.scatter(pose_result[:,0]*180/np.pi, pose_result[:,1]*180/np.pi % 360)   # remnant of symmetric angle
-        plt.xlabel('Angle [deg]')
-        plt.ylabel('Angle [deg]')
-        plt.legend(['Ground truth', 'Estimated'])
-        plt.title('Rotation Angle Estimation Result')
-        plt.grid()
-        plt.savefig('./results/pose_result.png')
-        plt.close()
+    # if generate_plot:
+    #     # Pose estimation result
+    #     pose_result = np.hstack((pose_gt.cpu().reshape(-1,1), pose_est.cpu().numpy().reshape(-1,1))) # [ground truth, estimated]
+    #     # pose_result = pose_result[pose_result[:,0].argsort()]
+    #     plt.plot([0,180], [0,180] ,'g')
+    #     plt.scatter(pose_result[:,0]*180/np.pi, pose_result[:,1]*180/np.pi % 360)   # remnant of symmetric angle
+    #     plt.xlabel('Angle [deg]')
+    #     plt.ylabel('Angle [deg]')
+    #     plt.legend(['Ground truth', 'Estimated'])
+    #     plt.title('Rotation Angle Estimation Result')
+    #     plt.grid()
+    #     plt.savefig('./results/pose_result.png')
+    #     plt.close()
 
-    return test_loss, pose_loss
+    return test_loss, pose_loss, pose_est, pose_gt, x_sample
 
 
 def main(args):    
@@ -144,6 +144,7 @@ def main(args):
     lm_dataset = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', object_number=9, transform=transform) # for duck object
     train_iterator = DataLoader(dataset=lm_dataset, batch_size=BATCH_SIZE, shuffle=True)
     test_iterator = DataLoader(dataset=lm_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    sample_iterator = DataLoader(dataset=lm_dataset, batch_size=16, shuffle=True)
 
     random_vector_for_generation = torch.randn(size=[16, LATENT_DIM]).to(device)
 
@@ -187,18 +188,19 @@ def main(args):
             start_time = time.time()
 
             train_loss = train(model, train_iterator, device, optimizer, vae_mode=args.vae_mode)
-            test_loss, pose_loss = test(model, test_iterator, device, generate_plot=args.plot_recon, vae_mode=args.vae_mode)
+            test_loss, pose_loss, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=4)
             
             end_time = time.time()
             
             train_loss /= len(lm_dataset)
             test_loss /= BATCH_SIZE*4
 
-            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss:.8f}, Time per an epoch: {(end_time - start_time):.2f}')
-            
-            if args.plot_recon:
+            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, Time per an epoch: {(end_time - start_time):.2f}')
+                        
+            if args.plot_recon:                
                 # reconstruction from random latent variable
-                generate_and_save_images(model, e, random_vector_for_generation)
+                _, _, _, _, reconstructed_image = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
+                generate_and_save_images(model, e, reconstructed_image)
 
             # save loss curve
             loss_list.append([e, train_loss, test_loss])
@@ -239,9 +241,15 @@ def main(args):
         model = torch.load('./checkpoints/model_best.pth.tar')
 
         
-        test_loss, pose_loss = test(model, test_iterator, device, generate_plot=True, vae_mode=args.vae_mode)
+        test_loss, pose_loss, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=4)
         test_loss /= BATCH_SIZE*4
-        print(f'Test Loss: {test_loss:.8f}, Pose Loss: {pose_loss:.8f}')
+        print(f'Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}')
+
+        # compute one sample for checking rotation matrix
+        test_loss, pose_loss, pose_est, pose_gt = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
+        # print(pose_est.cpu())
+        # print(pose_gt.cpu())
+
         
     else:
         print("'{}' is not recognized. Use 'train' or 'evaluate'".format(args.command))
