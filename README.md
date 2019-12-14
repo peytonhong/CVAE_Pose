@@ -24,6 +24,6 @@ VAE result
 ![R matrix estimation z_dim 9 ae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/pose_result_ae_zdim9.png)
 AE result
 
-R matrix error of VAE at z_dim=9 is about 0.0176
+R matrix error of VAE at z_dim=128 is about 0.02.
 
-R matrix error of AE at z_dim=9 is smaller than VAE version. (number not shown due to data lost)
+R matrix error of AE at z_dim=128 is about 0.00004.
