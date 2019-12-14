@@ -15,7 +15,7 @@ Convolutional Variational Autoencoder for object pose estimation (Pytorch versio
 
 VAE result
 
-![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/image_at_epoch_0299_ae.png)
+![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/image_at_epoch_0178_ae.png)
 
 AE result
 
