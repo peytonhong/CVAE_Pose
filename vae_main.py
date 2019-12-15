@@ -195,8 +195,7 @@ def main(args):
             train_loss /= len(lm_dataset_train)
             test_loss /= len(lm_dataset_test)
 
-            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, \
-                Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
+            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
                         
             if args.plot_recon:                
                 # reconstruction from random latent variable
