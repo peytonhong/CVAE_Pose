@@ -32,7 +32,7 @@ def train(model, dataset, device, optimizer, vae_mode):
     model.train()
     # loss of the epoch
     train_loss = 0
-    for _, sampled_batch in enumerate(dataset):        
+    for _, sampled_batch in enumerate(dataset):
         x = sampled_batch['image_cropped']
         y = sampled_batch['image_cropped']
         pose_gt = sampled_batch['pose'] # (N,9)
@@ -43,7 +43,6 @@ def train(model, dataset, device, optimizer, vae_mode):
         # forward pass
         x_sample, z_mu, z_var, pose_est = model(x)
         # reconstruction loss : the lower the better (negative log likelihood)
-        # recon_loss = F.binary_cross_entropy(x_sample, y, reduction='sum')
         recon_loss = F.mse_loss(x_sample, y, reduction='mean')
         if vae_mode:    
             # kl divergence loss : the lower the better
@@ -141,10 +140,11 @@ def main(args):
     # train_iterator = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     # test_iterator = DataLoader(test_dataset, batch_size=BATCH_SIZE)
     transform = transforms.Compose([ToTensor()])
-    lm_dataset = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', object_number=9, transform=transform) # for duck object
-    train_iterator = DataLoader(dataset=lm_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    test_iterator = DataLoader(dataset=lm_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    sample_iterator = DataLoader(dataset=lm_dataset, batch_size=16, shuffle=True)
+    lm_dataset_train = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', task='train', object_number=9, transform=transform) # for duck object
+    lm_dataset_test = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', task='test', object_number=9, transform=transform) # for duck object
+    train_iterator = DataLoader(dataset=lm_dataset_train, batch_size=BATCH_SIZE, shuffle=True)
+    test_iterator = DataLoader(dataset=lm_dataset_test, batch_size=BATCH_SIZE, shuffle=True)
+    sample_iterator = DataLoader(dataset=lm_dataset_train, batch_size=16, shuffle=True)
 
     random_vector_for_generation = torch.randn(size=[16, LATENT_DIM]).to(device)
 
@@ -188,14 +188,15 @@ def main(args):
             start_time = time.time()
 
             train_loss = train(model, train_iterator, device, optimizer, vae_mode=args.vae_mode)
-            test_loss, pose_loss, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=4)
+            train_time = time.time() - start_time
+            test_loss, pose_loss, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)            
+            test_time = time.time() - train_time
             
-            end_time = time.time()
-            
-            train_loss /= len(lm_dataset)
-            test_loss /= BATCH_SIZE*4
+            train_loss /= len(lm_dataset_train)
+            test_loss /= len(lm_dataset_test)
 
-            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, Time per an epoch: {(end_time - start_time):.2f}')
+            print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, \
+                    Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
                         
             if args.plot_recon:                
                 # reconstruction from random latent variable
@@ -223,32 +224,21 @@ def main(args):
             # if patience_counter > 3:
             #     break
 
-        # sample and generate a image
-        # z = torch.randn(1, LATENT_DIM).to(device)
-
-        # run only the decoder
-        # reconstructed_img = model.dec(z)
-        # img = reconstructed_img.view(INPUT_DIM).data.cpu()
-
-        # print(z.shape)
-        # print(img.shape)
-
-        # plt.imshow(img, cmap='gray')
-        # plt.savefig('sample_image.png')
-        # plt.close()
     elif args.command == 'evaluate':
         print(f'This is evaluation mode.')
+        print(f'Total number of test images: {len(lm_dataset_test)}')
         model = torch.load('./checkpoints/model_best.pth.tar')
 
-        
-        test_loss, pose_loss, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=4)
-        test_loss /= BATCH_SIZE*4
-        print(f'Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}')
+        start_time = time.time()
+        test_loss, pose_loss, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)
+        test_time = time.time() - start_time
+        test_loss /= len(lm_dataset_test)
+        print(f'Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, Test Time: {(test_time):.2f}')
 
         # compute one sample for checking rotation matrix
-        test_loss, pose_loss, pose_est, pose_gt = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
-        # print(pose_est.cpu())
-        # print(pose_gt.cpu())
+        test_loss, pose_loss, pose_est, pose_gt, reconstructed_image = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
+        print(pose_est.cpu()[0])
+        print(pose_gt.cpu()[0])
 
         
     else:
