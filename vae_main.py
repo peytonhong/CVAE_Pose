@@ -186,17 +186,17 @@ def main(args):
         for e in range(N_EPOCHS):
 
             start_time = time.time()
-
             train_loss = train(model, train_iterator, device, optimizer, vae_mode=args.vae_mode)
             train_time = time.time() - start_time
+            start_time = time.time()
             test_loss, pose_loss, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)            
-            test_time = time.time() - train_time
+            test_time = time.time() - start_time
             
             train_loss /= len(lm_dataset_train)
             test_loss /= len(lm_dataset_test)
 
             print(f'Epoch {e}, Train Loss: {train_loss:.8f}, Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, \
-                    Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
+                Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
                         
             if args.plot_recon:                
                 # reconstruction from random latent variable
