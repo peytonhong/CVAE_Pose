@@ -158,13 +158,22 @@ def to_polar(theta, theta_sym):
     sym_ratio = 360/theta_sym
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
-def generate_and_save_images(model, epoch, test_input):
-    # predictions = model.dec(test_input).cpu().detach().numpy()
-    predictions = test_input.cpu().detach().numpy()
-    fig = plt.figure(figsize=(4,4))
+def generate_and_save_images(model, epoch, reconstructed_image, input_image, gt_image):
+    predictions = reconstructed_image.cpu().detach().numpy()
+    input_image = input_image.cpu().detach().numpy()
+    gt_image = gt_image.cpu().detach().numpy()
+    fig = plt.figure(figsize=(3,4))
+    for i in range(input_image.shape[0]):
+        plt.subplot(3, 4, i+1)
+        plt.imshow(input_image[i].transpose([1,2,0]))
+        plt.axis('off')
+    for i in range(gt_image.shape[0]):
+        plt.subplot(3, 4, i+5)
+        plt.imshow(gt_image[i].transpose([1,2,0]))
+        plt.axis('off')
     for i in range(predictions.shape[0]):
-        plt.subplot(4, 4, i+1)
-        plt.imshow(predictions[i].transpose([1,2,0]), cmap='gray')
+        plt.subplot(3, 4, i+9)
+        plt.imshow(predictions[i].transpose([1,2,0]))
         plt.axis('off')
 
     # tight_layout minimizes the overlap between 2 sub-plots

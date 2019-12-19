@@ -19,8 +19,8 @@ def argparse_args():
   desc = "Pytorch implementation of 'Convolutional Augmented Variational AutoEncoder (CAVAE)'"
   parser = argparse.ArgumentParser(description=desc)
   parser.add_argument('command', help="'train' or 'evaluate'")
-  parser.add_argument('--latent_dim', default=2, type=int, help="Dimension of latent vector")
-  parser.add_argument('--num_epochs', default=200, type=int, help="The number of epochs to run")
+  parser.add_argument('--latent_dim', default=128, type=int, help="Dimension of latent vector")
+  parser.add_argument('--num_epochs', default=300, type=int, help="The number of epochs to run")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
   parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
   parser.add_argument('--plot_recon', default=False, type=bool, help="True: creates reconstructed image on each epoch")
@@ -33,7 +33,7 @@ def train(model, dataset, device, optimizer, vae_mode):
     # loss of the epoch
     train_loss = 0
     for _, sampled_batch in enumerate(dataset):
-        x = sampled_batch['image_cropped']
+        x = sampled_batch['image_aug']
         y = sampled_batch['image_cropped']
         pose_gt = sampled_batch['pose'] # (N,9)
         x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
@@ -78,7 +78,7 @@ def test(model, dataset, device, vae_mode, test_iter):
     # we don't need to track the gradients, since we are not updating the parameters during evaluation / testing
     with torch.no_grad():
         for i, sampled_batch in enumerate(dataset):        
-            x = sampled_batch['image_cropped']
+            x = sampled_batch['image_aug']
             y = sampled_batch['image_cropped']
             pose_gt = sampled_batch['pose'] # (N,9)
             x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
@@ -123,7 +123,7 @@ def test(model, dataset, device, vae_mode, test_iter):
     #     plt.savefig('./results/pose_result.png')
     #     plt.close()
 
-    return test_loss, pose_loss, pose_est, pose_gt, x_sample
+    return test_loss, pose_loss, pose_est, pose_gt, x_sample, x, y
 
 
 def main(args):    
@@ -144,7 +144,10 @@ def main(args):
     lm_dataset_test = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', task='test', object_number=9, transform=transform) # for duck object
     train_iterator = DataLoader(dataset=lm_dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     test_iterator = DataLoader(dataset=lm_dataset_test, batch_size=BATCH_SIZE, shuffle=True)
-    sample_iterator = DataLoader(dataset=lm_dataset_train, batch_size=16, shuffle=True)
+    sample_iterator = DataLoader(dataset=lm_dataset_test, batch_size=4, shuffle=True)
+
+    print(f'Train images:   {len(lm_dataset_train)}')
+    print(f'Test images:    {len(lm_dataset_test)}')
 
     random_vector_for_generation = torch.randn(size=[16, LATENT_DIM]).to(device)
 
@@ -163,6 +166,9 @@ def main(args):
     else:
         # Autoencoder
         model = AE(encoder, decoder, poseNet).to(device)
+
+    # DataParallel for Multi GPU
+    model = nn.DataParallel(model).to(device)
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -189,7 +195,7 @@ def main(args):
             train_loss = train(model, train_iterator, device, optimizer, vae_mode=args.vae_mode)
             train_time = time.time() - start_time
             start_time = time.time()
-            test_loss, pose_loss, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)            
+            test_loss, pose_loss, _, _, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)            
             test_time = time.time() - start_time
             
             train_loss /= len(lm_dataset_train)
@@ -199,8 +205,8 @@ def main(args):
                         
             if args.plot_recon:                
                 # reconstruction from random latent variable
-                _, _, _, _, reconstructed_image = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
-                generate_and_save_images(model, e, reconstructed_image)
+                _, _, _, _, reconstructed_image, input_image, gt_image = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
+                generate_and_save_images(model, e, reconstructed_image, input_image, gt_image)
 
             # save loss curve
             loss_list.append([e, train_loss, test_loss])
@@ -228,16 +234,17 @@ def main(args):
         print(f'Total number of test images: {len(lm_dataset_test)}')
         model = torch.load('./checkpoints/model_best.pth.tar')
 
-        start_time = time.time()
-        test_loss, pose_loss, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)
-        test_time = time.time() - start_time
-        test_loss /= len(lm_dataset_test)
-        print(f'Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, Test Time: {(test_time):.2f}')
+        # start_time = time.time()
+        # test_loss, pose_loss, _, _, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)
+        # test_time = time.time() - start_time
+        # test_loss /= len(lm_dataset_test)
+        # print(f'Test Loss: {test_loss:.8f}, R matrix Loss: {pose_loss:.8f}, Test Time: {(test_time):.2f}')
 
         # compute one sample for checking rotation matrix
-        test_loss, pose_loss, pose_est, pose_gt, reconstructed_image = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
-        print(pose_est.cpu()[0])
-        print(pose_gt.cpu()[0])
+        test_loss, pose_loss, pose_est, pose_gt, reconstructed_image, input_image, gt_image = test(model, sample_iterator, device, vae_mode=args.vae_mode, test_iter=0)
+        generate_and_save_images(model, 9999, reconstructed_image, input_image, gt_image)
+        # print(pose_est.cpu()[0])
+        # print(pose_gt.cpu()[0])
 
         
     else:
