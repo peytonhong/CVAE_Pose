@@ -66,8 +66,8 @@ class LineModDataset(Dataset):
         # image augmentation sequence
         image_aug = copy.deepcopy(image_cropped)        
         image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
-        image_aug = self.image_augmentation_random_circle(image_aug)
-        image_aug = self.image_augmentation_blur(image_aug)
+        # image_aug = self.image_augmentation_random_circle(image_aug)
+        # image_aug = self.image_augmentation_blur(image_aug)
         # image_aug = self.image_augmentation_color_change(image_aug)
         
         pose = pose.astype(np.float32)
@@ -104,9 +104,9 @@ class LineModDataset(Dataset):
         return image_blurred
 
     def image_augmentation_scale_and_position(self, image, mask, random_background=True):
-        ''' Scale the image between 0.5 ~ 1.0 random scale factor, and translate the object to random position. '''
+        ''' Scale the image between 0.8 ~ 1.0 random scale factor, and translate the object to random position. '''
         h, w, c = image.shape # [128,128,3]
-        scale = (np.random.rand(1)*5 + 5)*0.1
+        scale = (10 - (np.random.rand(1)*2))*0.1
         w_scaled, h_scaled = int(w*scale), int(h*scale)
         w_offset = int(np.random.rand(1)*(w - w_scaled))
         h_offset = int(np.random.rand(1)*(h - h_scaled))

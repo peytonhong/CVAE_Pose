@@ -32,12 +32,15 @@ def train(model, dataset, device, optimizer, vae_mode):
     model.train()
     # loss of the epoch
     train_loss = 0
+    start_time = time.time()
     for _, sampled_batch in enumerate(dataset):
+        
         x = sampled_batch['image_aug']
         y = sampled_batch['image_cropped']
         pose_gt = sampled_batch['pose'] # (N,9)
         x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
-                
+        print(f'Data time:  {time.time() - start_time}')
+        start_time = time.time()
         # update the gradients to zero
         optimizer.zero_grad()
         # forward pass
