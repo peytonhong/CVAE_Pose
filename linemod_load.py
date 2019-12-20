@@ -14,7 +14,7 @@ import copy
 class LineModDataset(Dataset):
     """ Loading LineMod Dataset for Pose Estimation """
 
-    def __init__(self, root_dir, task, object_number, transform=None):
+    def __init__(self, root_dir, task, object_number, transform=None, augmentation=True):
         """
         Args:
             root_dir (string): Path to the LineMod dataset.
@@ -34,7 +34,7 @@ class LineModDataset(Dataset):
         self.backgrounds = glob.glob(str(self.COCO_dir / '*'))
         self.mask_path = self.object_path / 'mask'
         self.masks = glob.glob(str(self.mask_path / '*'))
-
+        self.augmentation = augmentation
 
         with open(self.object_path / 'scene_gt.json') as json_file:
             gt = json.load(json_file)
@@ -58,18 +58,22 @@ class LineModDataset(Dataset):
         
         image = cv2.imread(self.images[idx])
         # image_cropped = cv2.imread(self.cropped_images[idx])
-        image_cropped, mask_cropped = self.get_cropped_image_and_mask(image, cv2.imread(self.masks[idx], flags=cv2.IMREAD_GRAYSCALE), bbox=self.bbox[idx])
-        pose = self.R_matrix[idx]
         
+        image_cropped, mask_cropped = self.get_cropped_image_and_mask(image, cv2.imread(self.masks[idx], flags=cv2.IMREAD_GRAYSCALE), bbox=self.bbox[idx])
+        
+            
         image = (cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
         image_cropped = (cv2.cvtColor(image_cropped, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
-        # image augmentation sequence
-        image_aug = copy.deepcopy(image_cropped)        
-        image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
-        # image_aug = self.image_augmentation_random_circle(image_aug)
-        # image_aug = self.image_augmentation_blur(image_aug)
-        # image_aug = self.image_augmentation_color_change(image_aug)
-        
+        if self.augmentation:
+            # image augmentation sequence
+            image_aug = copy.deepcopy(image_cropped)        
+            image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
+            # image_aug = self.image_augmentation_random_circle(image_aug)
+            # image_aug = self.image_augmentation_blur(image_aug)
+            # image_aug = self.image_augmentation_color_change(image_aug)
+        else:
+            image_aug = image_cropped
+        pose = self.R_matrix[idx]
         pose = pose.astype(np.float32)
         sample = {'image': image, 'image_cropped': image_cropped, 'mask_cropped': mask_cropped, 'image_aug': image_aug, 'pose': pose}
 

@@ -32,14 +32,11 @@ def train(model, dataset, device, optimizer, vae_mode):
     model.train()
     # loss of the epoch
     train_loss = 0
-    start_time = time.time()
-    for _, sampled_batch in enumerate(dataset):
-        
+    for _, sampled_batch in enumerate(dataset):        
         x = sampled_batch['image_aug']
         y = sampled_batch['image_cropped']
         pose_gt = sampled_batch['pose'] # (N,9)
         x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
-        print(f'Data time:  {time.time() - start_time}')
         start_time = time.time()
         # update the gradients to zero
         optimizer.zero_grad()
@@ -81,7 +78,7 @@ def test(model, dataset, device, vae_mode, test_iter):
     # we don't need to track the gradients, since we are not updating the parameters during evaluation / testing
     with torch.no_grad():
         for i, sampled_batch in enumerate(dataset):        
-            x = sampled_batch['image_aug']
+            x = sampled_batch['image_cropped']
             y = sampled_batch['image_cropped']
             pose_gt = sampled_batch['pose'] # (N,9)
             x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
@@ -136,15 +133,15 @@ def main(args):
     N_EPOCHS = args.num_epochs       # times to run the model on complete data
     INPUT_DIM = (128, 128) # size of each input (width, height)
     LATENT_DIM = args.latent_dim     # latent vector dimension
-    lr = 1e-3           # learning rate
+    lr = 2e-4           # learning rate
     max_channel = args.max_channel
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # train_iterator = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     # test_iterator = DataLoader(test_dataset, batch_size=BATCH_SIZE)
     transform = transforms.Compose([ToTensor()])
-    lm_dataset_train = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', task='train', object_number=9, transform=transform) # for duck object
-    lm_dataset_test = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', task='test', object_number=9, transform=transform) # for duck object
+    lm_dataset_train = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', task='train', object_number=9, transform=transform, augmentation=True) # for duck object
+    lm_dataset_test = LineModDataset(root_dir='D:\ImageDataset\PoseDataset\lm_full', task='test', object_number=9, transform=transform, augmentation=False) # for duck object
     train_iterator = DataLoader(dataset=lm_dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     test_iterator = DataLoader(dataset=lm_dataset_test, batch_size=BATCH_SIZE, shuffle=True)
     sample_iterator = DataLoader(dataset=lm_dataset_test, batch_size=4, shuffle=True)
