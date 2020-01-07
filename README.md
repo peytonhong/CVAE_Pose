@@ -11,19 +11,10 @@ Convolutional Variational Autoencoder for object pose estimation (Pytorch versio
   * Rotation matrix (3x3)
 
 # Reconstructed image
-![Reconstructed image_vae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/image_at_epoch_0299.png)
-VAE result
-
-![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/image_at_epoch_0178_ae.png)
-AE result
-
-# 3X3 rotation matrix estimation result
-![R matrix estimation z_dim 9 vae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/pose_result_vae_zdim9.png)
-VAE result
-
-![R matrix estimation z_dim 9 ae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/pose_result_ae_zdim9.png)
-AE result
-
-R matrix error of VAE at z_dim=128 is about 0.02.
-
-R matrix error of AE at z_dim=128 is about 0.00004.
+![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/master/results/image_at_epoch_0009.png)
+* Description
+* Left: Training results
+* Right: Test results.
+* 1st row: Input images
+* 2nd row: Ground truth
+* 3rd row: Reconstructed images
