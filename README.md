@@ -8,16 +8,22 @@ Convolutional Variational Autoencoder for object pose estimation (Pytorch versio
 * Output image
   * Reconstructed rectangle images
 * Output (FC)
-  * Rotation angle (pose)
+  * Rotation matrix (3x3)
 
 # Reconstructed image
-![Reconstructed image](https://github.com/peytonhong/CVAE_Pose/blob/cae_pytorch/results/image_at_epoch_0099.png)
+![Reconstructed image_vae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/image_at_epoch_0299.png)
+VAE result
 
-# 1D pose estimation result
-![1D Pose estimation z_dim 2](https://github.com/peytonhong/CVAE_Pose/blob/cae_pytorch/results/pose_result_z_dim_2.png)
+![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/image_at_epoch_0178_ae.png)
+AE result
 
-Pose loss of AE at z_dim=2 is about 0.1 deg.
+# 3X3 rotation matrix estimation result
+![R matrix estimation z_dim 9 vae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/pose_result_vae_zdim9.png)
+VAE result
 
-Pose loss of VAE at z_dim=2 is about 0.07 deg.
+![R matrix estimation z_dim 9 ae](https://github.com/peytonhong/CVAE_Pose/blob/cvae_lm/results/pose_result_ae_zdim9.png)
+AE result
 
-This result shows that VAE is more accurate than AE for 1d pose estimation. (But both results are actually very similar.)
+R matrix error of VAE at z_dim=128 is about 0.02.
+
+R matrix error of AE at z_dim=128 is about 0.00004.

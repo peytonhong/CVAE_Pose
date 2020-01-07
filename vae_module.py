@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+import numpy as np
 
 class Encoder(nn.Module):
     ''' This the encoder part of VAE
@@ -22,8 +23,8 @@ class Encoder(nn.Module):
         self.input_dim = input_dim
         self.fc_input_dim = int((input_dim[0]/16)*(input_dim[1]/16)*self.max_channel)
         self.z_dim = z_dim
-        self.maxpool =  nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv1 = nn.Conv2d(in_channels=1,                        out_channels=int(self.max_channel/8), kernel_size=3, stride=1, padding=1)
+        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv1 = nn.Conv2d(in_channels=3,                        out_channels=int(self.max_channel/8), kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(in_channels=int(self.max_channel/8),  out_channels=int(self.max_channel/4), kernel_size=3, stride=1, padding=1)
         self.conv3 = nn.Conv2d(in_channels=int(self.max_channel/4),  out_channels=int(self.max_channel/2), kernel_size=3, stride=1, padding=1)
         self.conv4 = nn.Conv2d(in_channels=int(self.max_channel/2),  out_channels=int(self.max_channel),   kernel_size=3, stride=1, padding=1)
@@ -70,7 +71,7 @@ class Decoder(nn.Module):
         self.dconv1 = nn.ConvTranspose2d(in_channels=int(self.max_channel),      out_channels=int(self.max_channel/2), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv2 = nn.ConvTranspose2d(in_channels=int(self.max_channel/2),    out_channels=int(self.max_channel/4), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv3 = nn.ConvTranspose2d(in_channels=int(self.max_channel/4),    out_channels=int(self.max_channel/8), kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=1,   kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=3,   kernel_size=3, stride=2, padding=1, output_padding=1)
 
     def forward(self, x):
         # x is of shape [batch_size, latent_dim]
@@ -93,14 +94,18 @@ class Pose(nn.Module):
 
         self.fc1 = nn.Linear(in_features=z_dim, out_features=100)
         self.fc2 = nn.Linear(in_features=100, out_features=100)
-        self.fc3 = nn.Linear(in_features=100, out_features=1)
+        self.fc3 = nn.Linear(in_features=100, out_features=9)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = torch.tanh(self.fc2(x))
-        x = self.fc3(x)
-        
-        return x
+        x = self.fc3(x) # (N,9)
+
+        # Rotation matrix refinement to make det(R)=1 (referenced from Geonho Cha's paper)
+        U, S, V = torch.svd(x.view(-1,3,3))
+        R_hat = torch.matmul(U, V.transpose(1,2)) # R_hat = U*V', det(R_hat)=1 since U and V are orthogonal matrices.
+
+        return R_hat.view(-1,9) # (N,9)
 
 
 class VAE(nn.Module):
@@ -131,21 +136,55 @@ class VAE(nn.Module):
 
         return predicted, z_mu, z_var, pose_estimate
 
+
+class AE(nn.Module):
+    ''' This is the AE, which takes a encoder and decoder.
+    '''
+    def __init__(self, enc, dec, pose):
+        super().__init__()
+
+        self.enc = enc
+        self.dec = dec
+        self.pose = pose
+
+    def forward(self, x):
+        z_mu, z_var = self.enc(x)
+        predicted = self.dec(z_mu)
+        pose_estimate = self.pose(z_mu)
+
+        return predicted, z_mu, z_var, pose_estimate
+
+
 def to_polar(theta, theta_sym):
     sym_ratio = 360/theta_sym
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
-def generate_and_save_images(model, epoch, test_input):
-    predictions = model.dec(test_input).cpu().detach().numpy()
-        
-    fig = plt.figure(figsize=(4,4))
+def generate_and_save_images(model, epoch, reconstructed_image_train, input_image_train, gt_image_train, reconstructed_image_test, input_image_test, gt_image_test):
+    reconstructed_image_train = reconstructed_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+    input_image_train = input_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+    gt_image_train = gt_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+    reconstructed_image_test = reconstructed_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+    input_image_test = input_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+    gt_image_test = gt_image_test.cpu().detach().numpy().transpose([0,2,3,1])
 
-    for i in range(predictions.shape[0]):
-        plt.subplot(4, 4, i+1)
-        plt.imshow(predictions[i, 0, :, :], cmap='gray')
-        plt.axis('off')
+    horizontal_gap_large = np.ones((128,32,3))
+    horizontal_gap_small = np.ones((128,8,3))
+    reconstructed_image_train_concat = np.hstack((reconstructed_image_train[0], horizontal_gap_small, reconstructed_image_train[1], horizontal_gap_small, reconstructed_image_train[2], horizontal_gap_small, reconstructed_image_train[3]))
+    reconstructed_image_test_concat = np.hstack((reconstructed_image_test[0], horizontal_gap_small, reconstructed_image_test[1], horizontal_gap_small, reconstructed_image_test[2], horizontal_gap_small, reconstructed_image_test[3]))
+    reconstructed_image_concat = np.hstack((reconstructed_image_train_concat, horizontal_gap_large, reconstructed_image_test_concat))
 
-    # tight_layout minimizes the overlap between 2 sub-plots
+    input_image_train_concat = np.hstack((input_image_train[0], horizontal_gap_small, input_image_train[1], horizontal_gap_small, input_image_train[2], horizontal_gap_small, input_image_train[3]))
+    input_image_test_concat = np.hstack((input_image_test[0], horizontal_gap_small, input_image_test[1], horizontal_gap_small, input_image_test[2], horizontal_gap_small, input_image_test[3]))
+    input_image_concat = np.hstack((input_image_train_concat, horizontal_gap_large, input_image_test_concat))
+
+    gt_image_train_concat = np.hstack((gt_image_train[0], horizontal_gap_small, gt_image_train[1], horizontal_gap_small, gt_image_train[2], horizontal_gap_small, gt_image_train[3]))
+    gt_image_test_concat = np.hstack((gt_image_test[0], horizontal_gap_small, gt_image_test[1], horizontal_gap_small, gt_image_test[2], horizontal_gap_small, gt_image_test[3]))
+    gt_image_concat = np.hstack((gt_image_train_concat, horizontal_gap_large, gt_image_test_concat))
+
+    total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat))
+    
+    fig = plt.figure()
+    plt.imshow(total_image)
+    plt.axis('off')
     plt.savefig('./results/image_at_epoch_{:04d}.png'.format(epoch))
-    # plt.show()
     plt.close(fig)
