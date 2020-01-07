@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+import numpy as np
 
 class Encoder(nn.Module):
     ''' This the encoder part of VAE
@@ -158,25 +159,32 @@ def to_polar(theta, theta_sym):
     sym_ratio = 360/theta_sym
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
-def generate_and_save_images(model, epoch, reconstructed_image, input_image, gt_image):
-    predictions = reconstructed_image.cpu().detach().numpy()
-    input_image = input_image.cpu().detach().numpy()
-    gt_image = gt_image.cpu().detach().numpy()
-    fig = plt.figure(figsize=(3,4))
-    for i in range(input_image.shape[0]):
-        plt.subplot(3, 4, i+1)
-        plt.imshow(input_image[i].transpose([1,2,0]))
-        plt.axis('off')
-    for i in range(gt_image.shape[0]):
-        plt.subplot(3, 4, i+5)
-        plt.imshow(gt_image[i].transpose([1,2,0]))
-        plt.axis('off')
-    for i in range(predictions.shape[0]):
-        plt.subplot(3, 4, i+9)
-        plt.imshow(predictions[i].transpose([1,2,0]))
-        plt.axis('off')
+def generate_and_save_images(model, epoch, reconstructed_image_train, input_image_train, gt_image_train, reconstructed_image_test, input_image_test, gt_image_test):
+    reconstructed_image_train = reconstructed_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+    input_image_train = input_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+    gt_image_train = gt_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+    reconstructed_image_test = reconstructed_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+    input_image_test = input_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+    gt_image_test = gt_image_test.cpu().detach().numpy().transpose([0,2,3,1])
 
-    # tight_layout minimizes the overlap between 2 sub-plots
+    horizontal_gap_large = np.ones((128,32,3))
+    horizontal_gap_small = np.ones((128,8,3))
+    reconstructed_image_train_concat = np.hstack((reconstructed_image_train[0], horizontal_gap_small, reconstructed_image_train[1], horizontal_gap_small, reconstructed_image_train[2], horizontal_gap_small, reconstructed_image_train[3]))
+    reconstructed_image_test_concat = np.hstack((reconstructed_image_test[0], horizontal_gap_small, reconstructed_image_test[1], horizontal_gap_small, reconstructed_image_test[2], horizontal_gap_small, reconstructed_image_test[3]))
+    reconstructed_image_concat = np.hstack((reconstructed_image_train_concat, horizontal_gap_large, reconstructed_image_test_concat))
+
+    input_image_train_concat = np.hstack((input_image_train[0], horizontal_gap_small, input_image_train[1], horizontal_gap_small, input_image_train[2], horizontal_gap_small, input_image_train[3]))
+    input_image_test_concat = np.hstack((input_image_test[0], horizontal_gap_small, input_image_test[1], horizontal_gap_small, input_image_test[2], horizontal_gap_small, input_image_test[3]))
+    input_image_concat = np.hstack((input_image_train_concat, horizontal_gap_large, input_image_test_concat))
+
+    gt_image_train_concat = np.hstack((gt_image_train[0], horizontal_gap_small, gt_image_train[1], horizontal_gap_small, gt_image_train[2], horizontal_gap_small, gt_image_train[3]))
+    gt_image_test_concat = np.hstack((gt_image_test[0], horizontal_gap_small, gt_image_test[1], horizontal_gap_small, gt_image_test[2], horizontal_gap_small, gt_image_test[3]))
+    gt_image_concat = np.hstack((gt_image_train_concat, horizontal_gap_large, gt_image_test_concat))
+
+    total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat))
+    
+    fig = plt.figure()
+    plt.imshow(total_image)
+    plt.axis('off')
     plt.savefig('./results/image_at_epoch_{:04d}.png'.format(epoch))
-    # plt.show()
     plt.close(fig)

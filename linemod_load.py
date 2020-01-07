@@ -10,16 +10,18 @@ from torchvision import transforms, utils
 from skimage import transform
 import os
 import copy
+from tqdm import tqdm
 
 class LineModDataset(Dataset):
     """ Loading LineMod Dataset for Pose Estimation """
 
-    def __init__(self, root_dir, task, object_number, transform=None, augmentation=True):
+    def __init__(self, root_dir, background_dir, task, object_number, transform=None, augmentation=False, use_offline_data=True):
         """
         Args:
             root_dir (string): Path to the LineMod dataset.
             object_number (int): Unique number of an object. (1, 2, ..., 15) -> converted into str (000001, 000002, ..., 000015)
             transform (callable, optional): Optional transform to be applied on a sample.
+            use_offline_data: use saved(offline) images, if False: create images on every iterations (steps)
         """
         self.root_dir = Path(root_dir)
         assert (task in ['train', 'test']), "The task must be train or test."
@@ -27,59 +29,146 @@ class LineModDataset(Dataset):
         self.object_number = f'{int(object_number):06}'
         self.object_path = self.root_dir / self.task / self.object_number        
         self.image_path = self.object_path / 'rgb'        
-        self.cropped_image_path = self.object_path / 'rgb_cropped'        
-        self.images = glob.glob(str(self.image_path / '*.png'))        
+        self.images = sorted(glob.glob(str(self.image_path / '*.png')))
         self.transform = transform        
-        self.COCO_dir = Path('D:\\ImageDataset\\COCO2017\\val2017')
+        self.COCO_dir = background_dir
         self.backgrounds = glob.glob(str(self.COCO_dir / '*'))
         self.mask_path = self.object_path / 'mask'
-        self.masks = glob.glob(str(self.mask_path / '*'))
+        self.masks = sorted(glob.glob(str(self.mask_path / '*')))
         self.augmentation = augmentation
+        self.use_offline_data = use_offline_data
 
+        # image augmentation paths (To reduce training time by saving augmented images in advance)
+        self.max_num_aug_images = 20000
+        self.cropped_image_path = self.object_path / 'rgb_cropped'
+        self.aug_image_path = self.object_path / 'rgb_aug'
+        self.cropped_mask_path = self.object_path / 'mask_cropped'
+        self.gt_image_path = self.object_path / 'rbg_gt_cropped'
+        if not self.cropped_image_path.exists():
+            self.cropped_image_path.mkdir()
+        if not self.aug_image_path.exists():
+            self.aug_image_path.mkdir()
+        if not self.cropped_mask_path.exists():
+            self.cropped_mask_path.mkdir()
+        if not self.gt_image_path.exists():
+            self.gt_image_path.mkdir()
+        
         with open(self.object_path / 'scene_gt.json') as json_file:
             gt = json.load(json_file)
         with open(self.object_path / 'scene_gt_info.json') as json_file:
-            gt_bbox = json.load(json_file)        
-        
-        self.num_images = len(gt)
+            gt_bbox = json.load(json_file) 
         self.R_matrix = self.gt_R_matrix_load(gt_json=gt)
         self.bbox = self.gt_bbox_load(gt_json=gt_bbox)
 
-        # self.check_cropped_image_and_create(self.images, cropped_image_path=self.cropped_image_path, gt_bbox=gt_bbox)
-        # self.cropped_images = glob.glob(str(self.cropped_image_path / '*.png'))
+        # Check number of saved images and recreate if the number is not matched to self.max_num_aug_images
+        if self.use_offline_data:
+            self.save_sample_images()
+            self.images_cropped = sorted(self.cropped_image_path.glob('*'))
+            self.masks_cropped = sorted(self.cropped_mask_path.glob('*'))
+            self.images_aug = sorted(self.aug_image_path.glob('*'))
+            self.images_gt_cropped = sorted(self.gt_image_path.glob('*'))
         
         
     def __len__(self):
-        return self.num_images
+        if self.use_offline_data:
+            return len(self.images_aug)
+        else:
+            return len(self.images)
     
-    def __getitem__(self, idx):        
+    def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        
-        image = cv2.imread(self.images[idx])
-        # image_cropped = cv2.imread(self.cropped_images[idx])
-        
-        image_cropped, mask_cropped = self.get_cropped_image_and_mask(image, cv2.imread(self.masks[idx], flags=cv2.IMREAD_GRAYSCALE), bbox=self.bbox[idx])
-        
+        if self.use_offline_data:
+            image_aug = cv2.imread(str(self.images_aug[idx]))
+            label = int(self.images_aug[idx].stem[:6])
+            image_cropped = cv2.imread(str(self.cropped_image_path / f'{label:06}.png'))
+            mask_cropped = cv2.imread(str(self.cropped_mask_path / f'{label:06}.png'))
+            image_gt_cropped = cv2.imread(str(self.gt_image_path / f'{label:06}.png'))
+            image = cv2.imread(self.images[label])
+            pose = self.R_matrix[label].astype(np.float32)
             
+            # image = (cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
+            # image_aug = (cv2.cvtColor(image_aug, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
+            # image_cropped = (cv2.cvtColor(image_cropped, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
+            # image_gt_cropped = (cv2.cvtColor(image_gt_cropped, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
+            # mask_cropped = (mask_cropped / 255).astype(np.float32)
+
+            # sample = {'image': image, 'image_cropped': image_cropped, 'mask_cropped': mask_cropped, 'image_aug': image_aug, 'image_gt_cropped': image_gt_cropped, 'pose': pose}
+        else:
+            image_path = self.images[idx]
+            sample = self.load_sample(image_path)
+            image = sample['image']
+            image_cropped = sample['image_cropped']
+            mask_cropped = sample['mask_cropped']
+            image_aug = sample['image_aug']
+            image_gt_cropped = sample['image_gt_cropped']
+            pose = sample['pose']
+        
         image = (cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
+        image_aug = (cv2.cvtColor(image_aug, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
         image_cropped = (cv2.cvtColor(image_cropped, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
+        image_gt_cropped = (cv2.cvtColor(image_gt_cropped, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
+        # mask_cropped = (mask_cropped / 255).astype(np.float32)
+
+        sample = {'image': image, 'image_cropped': image_cropped, 'mask_cropped': mask_cropped, 'image_aug': image_aug, 'image_gt_cropped': image_gt_cropped, 'pose': pose}
+        
+        if self.transform:
+            sample = self.transform(sample)
+        return sample
+
+    def save_sample_images(self):
+        num_aug_images = len(sorted(self.aug_image_path.glob('*')))
+        if self.task == 'train':            
+            is_same = (num_aug_images == self.max_num_aug_images)
+        else:
+            is_same = (num_aug_images == len(self.images))
+
+        if not is_same: # if the number of augmented images is not matched.
+            print(f'Creating new augmented data for {self.task} images.')
+            cropped_image_path = np.array(sorted(self.cropped_image_path.glob('*')))
+            aug_image_path = np.array(sorted(self.aug_image_path.glob('*')))
+            total_image_path = np.hstack((cropped_image_path, aug_image_path))
+            for path in total_image_path:
+                path.unlink()
+        
+            images_to_save_list = np.array(self.images)
+            images_random_choice = np.random.choice(self.images, size=(self.max_num_aug_images - len(self.images)))            
+            images_to_save_list = np.hstack((images_to_save_list, images_random_choice))
+            cnt = 0
+            saved_image_path = []
+            for image_path in tqdm(images_to_save_list):                
+                sample = self.load_sample(image_path)
+                if not image_path in saved_image_path:                    
+                    cv2.imwrite(str(self.cropped_image_path / Path(str(Path(image_path).stem) + '.png')), sample['image_cropped'])
+                    cv2.imwrite(str(self.gt_image_path / Path(str(Path(image_path).stem) + '.png')), sample['image_gt_cropped'])
+                    cv2.imwrite(str(self.cropped_mask_path / Path(str(Path(image_path).stem) + '.png')), sample['mask_cropped'])
+                    if self.task == 'test':
+                        cv2.imwrite(str(self.aug_image_path / Path(str(Path(image_path).stem) + '.png')), sample['image_aug']) # image_aug which is same with image_cropped
+                    saved_image_path.append(image_path)
+                else:
+                    cnt += 1
+                if self.task == 'train':
+                    cv2.imwrite(str(self.aug_image_path / Path(str(Path(image_path).stem) + '_' + f'{cnt:05}.png')), sample['image_aug'])
+                    
+
+    def load_sample(self, image_path):
+        image = cv2.imread(image_path)
+        idx = int(Path(image_path).stem) # stem: The final path component, without its suffix
+        image_cropped, image_gt_cropped, mask_cropped = self.get_cropped_image_and_mask(image, cv2.imread(self.masks[idx], flags=cv2.IMREAD_GRAYSCALE), bbox=self.bbox[idx])
+                    
         if self.augmentation:
             # image augmentation sequence
             image_aug = copy.deepcopy(image_cropped)        
+            image_aug = self.image_augmentation_color_change(image_aug) # gamma correction
             image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
-            # image_aug = self.image_augmentation_random_circle(image_aug)
-            # image_aug = self.image_augmentation_blur(image_aug)
-            # image_aug = self.image_augmentation_color_change(image_aug)
+            image_aug = self.image_augmentation_random_circle(copy.deepcopy(image_aug))
+            # image_aug = self.image_augmentation_blur(image_aug)            
         else:
             image_aug = image_cropped
-        pose = self.R_matrix[idx]
-        pose = pose.astype(np.float32)
-        sample = {'image': image, 'image_cropped': image_cropped, 'mask_cropped': mask_cropped, 'image_aug': image_aug, 'pose': pose}
+        pose = self.R_matrix[idx].astype(np.float32)
 
-        if self.transform:
-            sample = self.transform(sample)
-
+        sample = {'image': image, 'image_cropped': image_cropped, 'mask_cropped': mask_cropped, 'image_aug': image_aug, 'image_gt_cropped': image_gt_cropped, 'pose': pose} 
+        
         return sample
 
     def get_cropped_image_and_mask(self, image, mask, bbox):
@@ -90,18 +179,29 @@ class LineModDataset(Dataset):
         y_max, x_max = bbox[0]+bbox[2], bbox[1]+bbox[3]
         image_cropped = image[x_min:x_max+1, y_min:y_max+1]
         mask_cropped = mask[x_min:x_max+1, y_min:y_max+1]
-        image_cropped = transform.resize(image_cropped, (128,128))
-        mask_cropped = transform.resize(mask_cropped, (128,128))
-        image_cropped = (np.array(image_cropped) * 255).astype(np.uint8)
-        mask_cropped = (mask_cropped > 0.0).astype(np.uint8)
+        
+        image_gt_cropped = cv2.bitwise_and(image_cropped, image_cropped, mask=mask_cropped)
 
-        return image_cropped, mask_cropped
+        image_cropped = cv2.resize(image_cropped, (128,128), interpolation=cv2.INTER_LINEAR )
+        mask_cropped = cv2.resize(mask_cropped, (128,128), interpolation=cv2.INTER_LINEAR )
+        image_gt_cropped = cv2.resize(image_gt_cropped, (128,128), interpolation=cv2.INTER_LINEAR )
+
+        mask_cropped = (mask_cropped == 255).astype(np.uint8)*255
+        
+        return image_cropped, image_gt_cropped, mask_cropped
+        
+    def adjust_gamma(self, image, gamma=1.0):        
+        invGamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+        return cv2.LUT(image, table)
+
 
     def image_augmentation_color_change(self, image):
-        if np.random.rand(1) > 0.5:
-            return cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
-        else:
-            return image
+        ''' color change from gamma correction '''
+        gamma = np.random.rand(1) + 0.5 # gamma range: 0.5~1.5
+        gamma_corrected_image = self.adjust_gamma(image, gamma=gamma)
+        return gamma_corrected_image
 
     def image_augmentation_blur(self, image):
         image_blurred = cv2.GaussianBlur(image, (3,3), cv2.BORDER_DEFAULT)
@@ -114,12 +214,11 @@ class LineModDataset(Dataset):
         w_scaled, h_scaled = int(w*scale), int(h*scale)
         w_offset = int(np.random.rand(1)*(w - w_scaled))
         h_offset = int(np.random.rand(1)*(h - h_scaled))
-        image_scaled = transform.resize(image, (h_scaled, w_scaled))
-        mask_scaled = transform.resize(mask, (h_scaled, w_scaled), anti_aliasing=False)
-        mask_idx = (mask_scaled > 0.0)
+        image_scaled = cv2.resize(image, (h_scaled, w_scaled), interpolation=cv2.INTER_LINEAR )
+        mask_scaled = cv2.resize(mask, (h_scaled, w_scaled), interpolation=cv2.INTER_LINEAR )
+        mask_idx = (mask_scaled == 255)
         if random_background:
             image_bg = cv2.imread(np.random.choice(self.backgrounds))[:,:,::-1]
-            image_bg = (image_bg / 255).astype(np.float32)
             h_bg, w_bg, c_bg = image_bg.shape
             h_rand, w_rand  = int(np.random.rand(1)*(h_bg - h)), int(np.random.rand(1)*(w_bg - w))
             image_aug = image_bg[h_rand:h_rand+h, w_rand:w_rand+w, :]
@@ -133,36 +232,16 @@ class LineModDataset(Dataset):
 
     def image_augmentation_random_circle(self, image):
         ''' Put random circles on the object for occlusion. '''
-        num_circles = np.random.choice(8,1)[0] # num_circles < 8 (random)
-        w, h, c = image.shape
+        num_circles = np.random.choice(20,1)[0] # num_circles < 20 (random)
+        h, w, c = image.shape
         for _ in range(num_circles):
-            x = np.random.choice(w, 1)[0]
-            y = np.random.choice(h, 1)[0]
-            r = np.random.choice(30, 1)[0]
-            color = np.random.rand(3)
-            # color = tuple([int(x) for x in color])
+            x = np.random.choice(h, 1)[0]
+            y = np.random.choice(w, 1)[0]
+            r = np.random.choice(10, 1)[0]
+            color = np.random.rand(3)*255
             cv2.circle(image, center=(x, y), radius=r, color=color, thickness=-1)
 
         return image
-
-
-    def save_cropped_image(self, images, cropped_image_path, gt_bbox):
-        ''' 
-        Output image is cropped along the nonzero area and resized into 128*128 shape.
-        '''
-        print(f'Creating cropped {self.task} images. This may take a few seconds.') 
-
-        for i in range(self.num_images):
-            image = cv2.imread(images[i])
-            # image_idx = np.argwhere((image[:,:,0] != 0) | (image[:,:,1] != 0) | (image[:,:,2] != 0))
-            # x_min, y_min = image_idx.min(axis=0)
-            # x_max, y_max = image_idx.max(axis=0)
-            y_min, x_min = self.bbox[i][0], self.bbox[i][1]
-            y_max, x_max = self.bbox[i][0]+self.bbox[i][2], self.bbox[i][1]+self.bbox[i][3]
-            image_cropped = image[x_min:x_max+1, y_min:y_max+1]
-            image = transform.resize(image_cropped, (128,128))
-            image = (np.array(image) * 255).astype(np.uint8)
-            cv2.imwrite(str(cropped_image_path / f'{i:06}.png'), image)
 
 
     def gt_R_matrix_load(self, gt_json):
@@ -179,36 +258,14 @@ class LineModDataset(Dataset):
         return np.array(bbox)
          
 
-    def check_cropped_image_and_create(self, images, cropped_image_path, gt_bbox):
-        '''
-        Creates cropped images in rgb_cropped folder.
-        
-        images: original images from train or test folder.
-        cropped_image_path: path to write cropped images.
-        gt_bbox: json file containing ground truth bounding box information.
-        '''
-        if not os.path.exists(str(cropped_image_path)):
-            # if rgb_cropped folder does not exist, make new folder and create cropped images
-            os.mkdir(cropped_image_path)
-            self.save_cropped_image(images, cropped_image_path, gt_bbox=gt_bbox)
-        else:
-            # if rgb_cropped folder exists, check the number of files and delete them if the total number is different, then create them again.
-            any_files = glob.glob(str(self.cropped_image_path / '*'))
-            if self.num_images != len(any_files):
-                for f in any_files:
-                    os.remove(f)                
-                self.save_cropped_image(images, self.cropped_image_path, gt_bbox=gt_bbox)
 
-
-    def dummy_function(self):
-        print('dummy_function called')
 
 
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
 
     def __call__(self, sample):
-        image, image_cropped, mask_cropped, image_aug, pose = sample['image'], sample['image_cropped'], sample['mask_cropped'], sample['image_aug'], sample['pose']
+        image, image_cropped, mask_cropped, image_aug, image_gt_cropped, pose = sample['image'], sample['image_cropped'], sample['mask_cropped'], sample['image_aug'], sample['image_gt_cropped'], sample['pose']
 
         # swap color axis because
         # numpy image: H x W x C
@@ -216,8 +273,10 @@ class ToTensor(object):
         image = image.transpose((2, 0, 1))
         image_cropped = image_cropped.transpose((2, 0, 1))
         image_aug = image_aug.transpose((2, 0, 1))
+        image_gt_cropped = image_gt_cropped.transpose((2, 0, 1))
         return {'image': torch.from_numpy(image),
                 'image_cropped': torch.from_numpy(image_cropped),
                 'mask_cropped': mask_cropped,
                 'image_aug': torch.from_numpy(image_aug),
+                'image_gt_cropped': image_gt_cropped,
                 'pose': torch.from_numpy(pose)}
