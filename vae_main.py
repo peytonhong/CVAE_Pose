@@ -121,7 +121,7 @@ def train(model, dataset, device, optimizer, epoch, args):
         # update the weights
         optimizer.step()
 
-    return train_loss, recon_loss, pose_loss, recon_loss_full_pixel
+    return train_loss, recon_loss, pose_loss, rendering_loss, recon_loss_full_pixel
 
 def test(model, dataset, device, args, test_iter):
     # set the evaluation mode
@@ -180,7 +180,7 @@ def test(model, dataset, device, args, test_iter):
     #     plt.savefig('./results/pose_result.png')
     #     plt.close()
 
-    return test_loss, recon_loss, pose_loss, pose_est, pose_gt, x_sample, x, y, image_aug
+    return test_loss, recon_loss, pose_loss, rendering_loss, pose_est, pose_gt, x_sample, x, y, image_aug
 
 
 def main(args):    
@@ -255,10 +255,10 @@ def main(args):
         for e in range(N_EPOCHS):
 
             start_time = time.time()
-            train_loss, recon_loss_train, pose_loss_train, recon_loss_train_full = train(model, train_iterator, device, optimizer, e, args)
+            train_loss, recon_loss_train, pose_loss_train, rendering_loss_train, recon_loss_train_full = train(model, train_iterator, device, optimizer, e, args)
             train_time = time.time() - start_time
             start_time = time.time()
-            test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)            
+            test_loss, recon_loss_test, pose_loss_test, rendering_loss_test, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)            
             test_time = time.time() - start_time
             
             recon_loss_train /= len(lm_dataset_train)
@@ -266,12 +266,12 @@ def main(args):
             pose_loss_train /= len(lm_dataset_train)
             pose_loss_test /= len(lm_dataset_test)
 
-            print(f'Epoch: {e:3d}, Train Recon Loss: {recon_loss_train:.6f}, Test Recon Loss: {recon_loss_test:.6f}, R Loss train: {pose_loss_train:.6f}, R Loss test: {pose_loss_test:.6f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
+            print(f'Epoch: {e:3d}, Train Recon Loss: {recon_loss_train:.6f}, Test Recon Loss: {recon_loss_test:.6f}, R Loss train: {pose_loss_train:.6f}, R Loss test: {pose_loss_test:.6f}, Rendering Loss train: {rendering_loss_train:.6f}, Rendering Loss test: {rendering_loss_test:.6f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
                         
             if args.plot_recon:
                 # reconstruction from random latent variable
-                _, _, _, _, _, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train = test(model, sample_iterator_train, device, args, test_iter=0)
-                _, _, _, _, _, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test = test(model, sample_iterator_test, device, args, test_iter=0)
+                _, _, _, _, _, reconstructed_image_train, input_image_train, _ , gt_image_train, image_aug_train = test(model, sample_iterator_train, device, args, test_iter=0)
+                _, _, _, _, _, reconstructed_image_test, input_image_test, _ , gt_image_test, image_aug_test = test(model, sample_iterator_test, device, args, test_iter=0)
                 generate_and_save_images(model, e, reconstructed_image_train, image_aug_train, gt_image_train, reconstructed_image_test, input_image_test, gt_image_test)
 
             # save loss curve
