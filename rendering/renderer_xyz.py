@@ -102,9 +102,9 @@ def singleton(cls):
 class Renderer(app.Canvas):
 
     def __init__(self, size, cam):
-
         app.Canvas.__init__(self, show=False, size=size)
         self.shape = (size[1], size[0])
+        
         self.yz_flip = np.eye(4, dtype=np.float32)
         self.yz_flip[1, 1], self.yz_flip[2, 2] = -1, -1
 

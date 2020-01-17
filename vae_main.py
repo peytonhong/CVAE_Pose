@@ -16,6 +16,7 @@ import argparse
 import configparser
 from pathlib import Path
 from tqdm import tqdm
+import cv2
 
 """parsing and configuration"""
 def argparse_args():  
@@ -24,13 +25,34 @@ def argparse_args():
   parser.add_argument('command', help="'train' or 'evaluate'")
   parser.add_argument('--latent_dim', default=128, type=int, help="Dimension of latent vector")
   parser.add_argument('--num_epochs', default=50, type=int, help="The number of epochs to run")
-  parser.add_argument('--batch_size', default=60, type=int, help="The number of batchs for each epoch")
+  parser.add_argument('--batch_size', default=200, type=int, help="The number of batchs for each epoch")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
   parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
   parser.add_argument('--plot_recon', default=True, type=bool, help="True: creates reconstructed image on each epoch")
   parser.add_argument('--bootstrap', default=False, type=bool, help="True: Bootstrapped L2 loss for each pixel")
 
   return parser.parse_args()
+
+def get_rendering(obj_model,rot_pose,tra_pose, ren):
+    '''Convert pointcloud into 2D rendered image using given transformation matrix. Output: batch rendered images'''
+    
+    rendered_imgs = []
+    for i in range(len(rot_pose)):
+        ren.clear()
+        M=np.eye(4)
+        M[:3,:3]=rot_pose[i].reshape(3,3)
+        M[:3,3]=tra_pose
+        ren.draw_model(obj_model, M)
+        img_r, depth_rend = ren.finish()
+        img_r = img_r[:,:,::-1]
+        vu_valid = np.where(depth_rend>0)
+        bbox_gt = np.array([np.min(vu_valid[0]),np.min(vu_valid[1]),np.max(vu_valid[0]),np.max(vu_valid[1])])
+        img_r = img_r[bbox_gt[0]:bbox_gt[2], bbox_gt[1]:bbox_gt[3]]
+        img_r = cv2.resize(img_r, (128,128), interpolation=cv2.INTER_LINEAR)
+        rendered_imgs.append(img_r)
+    rendered_imgs = np.array(rendered_imgs, dtype=np.float32).transpose([0,3,1,2]) # [N,128,128,3] -> [N,3,128,128]
+    # return img_r, depth_rend, bbox_gt
+    return rendered_imgs
 
 def bootstrapped_l2_loss(x, y, bootstrap_factor=4):
     ''' The Bootstrapped L2 Loss which is only computed on the pixels with the most biggest errors. '''
@@ -81,12 +103,16 @@ def train(model, dataset, device, optimizer, epoch, args):
         # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
         pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
+        # pointcloud rendering output loss
+        rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
+        rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), x_sample, reduction='mean')
+
         if args.vae_mode:
             # ELBO (Evidence lower bound): the higher the better
             ELBO = recon_loss + kl_loss
             loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
         else:
-            loss = 0.01*recon_loss + 0.99*pose_loss
+            loss = 0.01*recon_loss + 0.98*pose_loss + 0.01*rendering_loss
 
         # backward pass
         loss.backward()
@@ -124,12 +150,16 @@ def test(model, dataset, device, args, test_iter):
             # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
             pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
+            # pointcloud rendering output loss
+            rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
+            rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), x_sample, reduction='mean')
+
             if args.vae_mode:
                 # total loss
                 ELBO = recon_loss + kl_loss
                 loss = ELBO + pose_loss
             else:
-                loss = 0.01*recon_loss + 0.99*pose_loss
+                loss = 0.01*recon_loss + 0.98*pose_loss + 0.01*rendering_loss
 
             test_loss += loss.item()        
             if i == test_iter:
