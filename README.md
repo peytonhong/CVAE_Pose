@@ -16,7 +16,7 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
   * Rotation matrix (3x3)
 
 ### Reconstructed image
-![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/rendering/results/image_at_epoch_0030(modified).png)
+![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/rendering/docs/image_at_epoch_0030(modified).png)
 ##### Reconstructed Image Description
 * Left: Training results
 * Right: Test results.
