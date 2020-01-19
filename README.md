@@ -3,12 +3,15 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 
 **FC layer is added on latent vectors (z) to estimate rotation angle.**
 
-**Pointcloud rendering is accomanied from the estimated rotation angle. The rendered(rotated) images are then evaluated with the output of decoder using MSE loss.**
+**Pointcloud 3d model is rendered along with the estimated rotation angle. The rendered (and rotated) images are then evaluated with the output of decoder using MSE loss.**
+
+### Network Architecture
+![Architecture](https://github.com/peytonhong/CVAE_Pose/blob/rendering/docs/structure(rendering).png)
 
 * Input image
-  * Rectangles with various rotation.
+  * LineMod dataset (duck) with various augmentation. (Random bubble, Random background, Gamma correction)
 * Output image
-  * Reconstructed rectangle images
+  * Reconstructed duck images
 * Output (FC)
   * Rotation matrix (3x3)
 
