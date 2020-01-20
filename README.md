@@ -9,7 +9,7 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 ![Architecture](https://github.com/peytonhong/CVAE_Pose/blob/rendering/docs/structure(rendering).png)
 
 * Input image
-  * LineMod dataset (duck) with various augmentation. (Random bubble, Random background, Gamma correction)
+  * LineMod dataset (duck) with various augmentation. (Random bubble, Random background, Random scale, Gamma correction)
 * Output image
   * Reconstructed duck images
 * Output (FC)
