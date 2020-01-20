@@ -112,7 +112,7 @@ def train(model, dataset, device, optimizer, epoch, args):
             ELBO = recon_loss + kl_loss
             loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
         else:
-            loss = 0.01*recon_loss + 0.01*pose_loss + 0.98*rendering_loss
+            loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
 
         # backward pass
         loss.backward()
@@ -159,7 +159,7 @@ def test(model, dataset, device, args, test_iter):
                 ELBO = recon_loss + kl_loss
                 loss = ELBO + pose_loss
             else:
-                loss = 0.01*recon_loss + 0.01*pose_loss + 0.98*rendering_loss
+                loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
 
             test_loss += loss.item()        
             if i == test_iter:
@@ -266,8 +266,17 @@ def main(args):
             pose_loss_train /= len(lm_dataset_train)
             pose_loss_test /= len(lm_dataset_test)
 
-            print(f'Epoch: {e:3d}, Train Recon Loss: {recon_loss_train:.6f}, Test Recon Loss: {recon_loss_test:.6f}, R Loss train: {pose_loss_train:.6f}, R Loss test: {pose_loss_test:.6f}, Rendering Loss train: {rendering_loss_train:.6f}, Rendering Loss test: {rendering_loss_test:.6f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
-                        
+            summary_note = f'Epoch: {e:3d}, Train Recon Loss: {recon_loss_train:.6f}, Test Recon Loss: {recon_loss_test:.6f}, R Loss train: {pose_loss_train:.6f}, R Loss test: {pose_loss_test:.6f}, Rendering Loss train: {rendering_loss_train:.6f}, Rendering Loss test: {rendering_loss_test:.6f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}'
+            print(summary_note)
+            if e == 0:
+                summary_file = open("summary_note.txt", 'w')
+                summary_file.write(summary_note + '\n')
+                summary_file.close()
+            else:
+                summary_file = open("summary_note.txt", 'a')
+                summary_file.write(summary_note + '\n')
+                summary_file.close()
+
             if args.plot_recon:
                 # reconstruction from random latent variable
                 _, _, _, _, _, _, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train, rendered_imgs_train = test(model, sample_iterator_train, device, args, test_iter=0)
