@@ -29,4 +29,4 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 * Without pointcloud: 0.000137
 * With pointcloud: 0.000222
 
-**This result shows that pointcloud rendering is not useful for pose estimation. (Need to try another method)**
+**This result shows that the pointcloud rendering is not useful for pose estimation. (Need to try another method)**
