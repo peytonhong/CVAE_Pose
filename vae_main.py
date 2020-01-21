@@ -269,11 +269,11 @@ def main(args):
             summary_note = f'Epoch: {e:3d}, Train Recon Loss: {recon_loss_train:.6f}, Test Recon Loss: {recon_loss_test:.6f}, R Loss train: {pose_loss_train:.6f}, R Loss test: {pose_loss_test:.6f}, Rendering Loss train: {rendering_loss_train:.6f}, Rendering Loss test: {rendering_loss_test:.6f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}'
             print(summary_note)
             if e == 0:
-                summary_file = open("summary_note.txt", 'w')
+                summary_file = open("results/summary_note.txt", 'w')
                 summary_file.write(summary_note + '\n')
                 summary_file.close()
             else:
-                summary_file = open("summary_note.txt", 'a')
+                summary_file = open("results/summary_note.txt", 'a')
                 summary_file.write(summary_note + '\n')
                 summary_file.close()
 
