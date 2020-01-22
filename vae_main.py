@@ -309,18 +309,12 @@ def main(args):
     elif args.command == 'evaluate':
         print(f'This is evaluation mode.')
         print(f'Total number of test images: {len(lm_dataset_test)}')
-        model = torch.load('./checkpoints/model_best.pth.tar')
-
-        # start_time = time.time()
-        # test_loss, pose_loss, _, _, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)
-        # test_time = time.time() - start_time
-        # test_loss /= len(lm_dataset_test)
-        # print(f'Test Loss: {test_loss:.6f}, R matrix Loss: {pose_loss:.6f}, Test Time: {(test_time):.2f}')
+        model = torch.load('./checkpoints/model_best.pth.tar')        
 
         # compute one sample for checking rotation matrix
-        _, _, _, pose_est_train, pose_gt_train, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train = test(model, sample_iterator_train, device, args, test_iter=0)
-        _, _, _, pose_est_test, pose_gt_test, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test = test(model, sample_iterator_test, device, args, test_iter=0)
-        generate_and_save_images(model, 9999, reconstructed_image_train, image_aug_train, gt_image_train, reconstructed_image_test, input_image_test, gt_image_test)
+        _, _, _, _, pose_est_train, pose_gt_train, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train, rendered_imgs_train = test(model, sample_iterator_train, device, args, test_iter=0)
+        _, _, _, _, pose_est_test, pose_gt_test, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test, rendered_imgs_test = test(model, sample_iterator_test, device, args, test_iter=0)
+        generate_and_save_images(model, 9999, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
         
         pose_train = np.hstack((pose_gt_train[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_train[0].cpu().numpy().transpose().reshape((-1,1))))
         pose_test = np.hstack((pose_gt_test[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_test[0].cpu().numpy().transpose().reshape((-1,1))))
@@ -328,6 +322,11 @@ def main(args):
         print(f'{pose_train}')
         print(f'Pose estimation result (test: [GT , Estimation])')
         print(f'{pose_test}')
+
+        test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)
+        test_loss /= len(lm_dataset_test)
+        pose_loss_test /= len(lm_dataset_test)
+        print(f'Test Loss: {test_loss:.6f}, R matrix Loss: {pose_loss_test:.6f}')
         
     else:
         print("'{}' is not recognized. Use 'train' or 'evaluate'".format(args.command))
