@@ -16,7 +16,7 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
   * Rotation matrix (3x3)
 
 ### Reconstructed image
-![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/rendering/docs/image_at_epoch_0030(modified).png)
+![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/rendering/docs/image_at_epoch_9999(modified).png)
 ##### Reconstructed Image Description
 * Left: Training results
 * Right: Test results.
@@ -27,6 +27,6 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 
 ### Rotation loss comparison
 * Without pointcloud: 0.000137
-* With pointcloud: 0.000222
+* With pointcloud: 0.000078
 
-**This result shows that the pointcloud rendering is not useful for pose estimation. (Need to try another method)**
+**This result shows that the pointcloud rendering is useful for pose estimation.**
