@@ -1,12 +1,12 @@
 # CVAE_Pose
 Convolutional (Variational) Autoencoder for object pose estimation (Pytorch version, Under construction)
 
-**FC layer is added on latent vectors (z) to estimate rotation angle.**
+**FC layer is added on latent vectors (z) to estimate rotation matrix.**
 
 * Input image
-  * Rectangles with various rotation.
+  * LineMod dataset (duck) with various augmentation. (Random bubble, Random background, Random scale, Gamma correction)
 * Output image
-  * Reconstructed rectangle images
+  * Reconstructed duck images
 * Output (FC)
   * Rotation matrix (3x3)
 
