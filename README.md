@@ -1,7 +1,7 @@
 # CVAE_Pose
 Convolutional (Variational) Autoencoder for object pose estimation (Pytorch version, Under construction)
 
-**FC layer is added on latent vectors (z) to estimate rotation angle.**
+**FC layer is added on latent vectors (z) to estimate rotation matrix.**
 
 **Pointcloud 3d model is rendered along with the estimated rotation angle. The rendered (and rotated) images are then evaluated with the output of decoder using MSE loss.**
 
