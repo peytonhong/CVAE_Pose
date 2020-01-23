@@ -1,5 +1,5 @@
 results/
-checkpoints/
+docs/*.pptx
 __pycache__/
 .ipynb_checkpoints/
 .vscode/
