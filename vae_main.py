@@ -30,6 +30,7 @@ def argparse_args():
   parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
   parser.add_argument('--plot_recon', default=True, type=bool, help="True: creates reconstructed image on each epoch")
   parser.add_argument('--bootstrap', default=False, type=bool, help="True: Bootstrapped L2 loss for each pixel")
+  parser.add_argument('--resume', default=False, type=bool, help="True: Load the trained model and resume training")
 
   return parser.parse_args()
 
@@ -232,7 +233,7 @@ def main(args):
     # train_iterator = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     # test_iterator = DataLoader(test_dataset, batch_size=BATCH_SIZE)
     transform = transforms.Compose([ToTensor()])
-    lm_dataset_train = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='train', object_number=9, transform=transform, augmentation=True, use_offline_data=True) # for duck object
+    lm_dataset_train = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='train', object_number=9, transform=transform, augmentation=True, use_offline_data=False) # for duck object
     lm_dataset_test = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='test', object_number=9, transform=transform, augmentation=False, use_offline_data=True) # for duck object
     train_iterator = DataLoader(dataset=lm_dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     test_iterator = DataLoader(dataset=lm_dataset_test, batch_size=BATCH_SIZE, shuffle=True)
@@ -253,12 +254,15 @@ def main(args):
     # pose
     poseNet = Pose(LATENT_DIM)
 
-    if args.vae_mode:
-        # Variational Autoencoder
-        model = VAE(encoder, decoder, poseNet).to(device)
+    if args.resume:
+        model = torch.load('./checkpoints/model_best.pth.tar') # load already trained model and resume training further
     else:
-        # Autoencoder
-        model = AE(encoder, decoder, poseNet).to(device)
+        if args.vae_mode:
+            # Variational Autoencoder
+            model = VAE(encoder, decoder, poseNet).to(device)
+        else:
+            # Autoencoder
+            model = AE(encoder, decoder, poseNet).to(device)
 
     # DataParallel for Multi GPU
     model = nn.DataParallel(model).to(device)
