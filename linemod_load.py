@@ -14,6 +14,7 @@ from tqdm import tqdm
 from plyfile import PlyData
 from rendering.renderer_xyz import Renderer
 from rendering.model import Model3D
+from sys import platform
 
 class LineModDataset(Dataset):
     """ Loading LineMod Dataset for Pose Estimation """
@@ -73,7 +74,8 @@ class LineModDataset(Dataset):
 
         # pointcloud model data import
         model_path = str(self.root_dir / 'models' / f'obj_{object_number:06d}.ply')
-        model_path = model_path.replace(os.sep, os.altsep) # replace '\' to '/'
+        if platform == 'win32': # only for Windows
+            model_path = model_path.replace(os.sep, os.altsep) # replace '\' to '/'
         self.obj_model = Model3D()
         self.obj_model.load(model_path, scale=0.001)        
         # model_data = PlyData.read(model_path)        
