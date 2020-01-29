@@ -11,6 +11,9 @@ from skimage import transform
 import os
 import copy
 from tqdm import tqdm
+from plyfile import PlyData
+from rendering.renderer_xyz import Renderer
+from rendering.model import Model3D
 
 class LineModDataset(Dataset):
     """ Loading LineMod Dataset for Pose Estimation """
@@ -37,7 +40,7 @@ class LineModDataset(Dataset):
         self.masks = sorted(glob.glob(str(self.mask_path / '*')))
         self.augmentation = augmentation
         self.use_offline_data = use_offline_data
-
+    
         # image augmentation paths (To reduce training time by saving augmented images in advance)
         self.max_num_aug_images = 20000
         self.cropped_image_path = self.object_path / 'rgb_cropped'
@@ -67,7 +70,24 @@ class LineModDataset(Dataset):
             self.masks_cropped = sorted(self.cropped_mask_path.glob('*'))
             self.images_aug = sorted(self.aug_image_path.glob('*'))
             self.images_gt_cropped = sorted(self.gt_image_path.glob('*'))
-        
+
+        # pointcloud model data import
+        model_path = str(self.root_dir / 'models' / f'obj_{object_number:06d}.ply')
+        model_path = model_path.replace(os.sep, os.altsep) # replace '\' to '/'
+        self.obj_model = Model3D()
+        self.obj_model.load(model_path, scale=0.001)        
+        # model_data = PlyData.read(model_path)        
+        # (self.model_x, self.model_y, self.model_z) = (np.array(model_data['vertex'][t]) for t in ('x', 'y', 'z'))
+        # (r, g, b, a) = (np.array(model_data['vertex'][t])/255 for t in ('red', 'green', 'blue', 'alpha'))
+        # self.model_colors = np.vstack((r,g,b,a)).transpose()
+        scene_camera_path = self.root_dir / 'train' / f'{object_number:06d}' / 'scene_camera.json'
+        with open(scene_camera_path) as json_file:
+            scene_camera = json.load(json_file)
+        cam_K = scene_camera['0']['cam_K']
+        cam_K = np.array(cam_K).reshape((3,3))
+        cam_T = gt['0'][0]['cam_t_m2c']
+        self.cam_T = np.array(cam_T) / 1000 # [mm] -> [m]        
+        self.ren = Renderer((640, 480), cam_K) # shape: (width, height)
         
     def __len__(self):
         if self.use_offline_data:

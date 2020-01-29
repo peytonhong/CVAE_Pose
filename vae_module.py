@@ -159,13 +159,15 @@ def to_polar(theta, theta_sym):
     sym_ratio = 360/theta_sym
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
-def generate_and_save_images(model, epoch, reconstructed_image_train, input_image_train, gt_image_train, reconstructed_image_test, input_image_test, gt_image_test):
+def generate_and_save_images(model, epoch, reconstructed_image_train, input_image_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test):
     reconstructed_image_train = reconstructed_image_train.cpu().detach().numpy().transpose([0,2,3,1])
     input_image_train = input_image_train.cpu().detach().numpy().transpose([0,2,3,1])
     gt_image_train = gt_image_train.cpu().detach().numpy().transpose([0,2,3,1])
     reconstructed_image_test = reconstructed_image_test.cpu().detach().numpy().transpose([0,2,3,1])
     input_image_test = input_image_test.cpu().detach().numpy().transpose([0,2,3,1])
     gt_image_test = gt_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+    rendered_imgs_train = rendered_imgs_train.transpose([0,2,3,1])
+    rendered_imgs_test = rendered_imgs_test.transpose([0,2,3,1])
 
     horizontal_gap_large = np.ones((128,32,3))
     horizontal_gap_small = np.ones((128,8,3))
@@ -181,7 +183,11 @@ def generate_and_save_images(model, epoch, reconstructed_image_train, input_imag
     gt_image_test_concat = np.hstack((gt_image_test[0], horizontal_gap_small, gt_image_test[1], horizontal_gap_small, gt_image_test[2], horizontal_gap_small, gt_image_test[3]))
     gt_image_concat = np.hstack((gt_image_train_concat, horizontal_gap_large, gt_image_test_concat))
 
-    total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat))
+    rendered_imgs_train_concat = np.hstack((rendered_imgs_train[0], horizontal_gap_small, rendered_imgs_train[1], horizontal_gap_small, rendered_imgs_train[2], horizontal_gap_small, rendered_imgs_train[3]))
+    rendered_imgs_test_concat = np.hstack((rendered_imgs_test[0], horizontal_gap_small, rendered_imgs_test[1], horizontal_gap_small, rendered_imgs_test[2], horizontal_gap_small, rendered_imgs_test[3]))
+    rendered_imgs_concat = np.hstack((rendered_imgs_train_concat, horizontal_gap_large, rendered_imgs_test_concat))
+        
+    total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat, rendered_imgs_concat))
     
     fig = plt.figure()
     plt.imshow(total_image)

@@ -16,6 +16,7 @@ import argparse
 import configparser
 from pathlib import Path
 from tqdm import tqdm
+import cv2
 
 """parsing and configuration"""
 def argparse_args():  
@@ -24,13 +25,34 @@ def argparse_args():
   parser.add_argument('command', help="'train' or 'evaluate'")
   parser.add_argument('--latent_dim', default=128, type=int, help="Dimension of latent vector")
   parser.add_argument('--num_epochs', default=50, type=int, help="The number of epochs to run")
-  parser.add_argument('--batch_size', default=60, type=int, help="The number of batchs for each epoch")
+  parser.add_argument('--batch_size', default=200, type=int, help="The number of batchs for each epoch")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
   parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
   parser.add_argument('--plot_recon', default=True, type=bool, help="True: creates reconstructed image on each epoch")
   parser.add_argument('--bootstrap', default=False, type=bool, help="True: Bootstrapped L2 loss for each pixel")
 
   return parser.parse_args()
+
+def get_rendering(obj_model,rot_pose,tra_pose, ren):
+    '''Convert pointcloud into 2D rendered image using given transformation matrix. Output: batch rendered images'''
+    
+    rendered_imgs = []
+    for i in range(len(rot_pose)):
+        ren.clear()
+        M=np.eye(4)
+        M[:3,:3]=rot_pose[i].reshape(3,3)
+        M[:3,3]=tra_pose
+        ren.draw_model(obj_model, M)
+        img_r, depth_rend = ren.finish()
+        img_r = img_r[:,:,::-1]
+        vu_valid = np.where(depth_rend>0)
+        bbox_gt = np.array([np.min(vu_valid[0]),np.min(vu_valid[1]),np.max(vu_valid[0]),np.max(vu_valid[1])])
+        img_r = img_r[bbox_gt[0]:bbox_gt[2], bbox_gt[1]:bbox_gt[3]]
+        img_r = cv2.resize(img_r, (128,128), interpolation=cv2.INTER_LINEAR)
+        rendered_imgs.append(img_r)
+    rendered_imgs = np.array(rendered_imgs, dtype=np.float32).transpose([0,3,1,2]) # [N,128,128,3] -> [N,3,128,128]
+    # return img_r, depth_rend, bbox_gt
+    return rendered_imgs
 
 def bootstrapped_l2_loss(x, y, bootstrap_factor=4):
     ''' The Bootstrapped L2 Loss which is only computed on the pixels with the most biggest errors. '''
@@ -48,8 +70,12 @@ def bootstrapped_l2_loss(x, y, bootstrap_factor=4):
 def train(model, dataset, device, optimizer, epoch, args):
     # set the train mode
     model.train()
+    num_trained_data = 0
     # loss of the epoch
-    train_loss = 0
+    train_loss_sum = 0
+    recon_loss_sum = 0
+    pose_loss_sum = 0
+    rendering_loss_sum = 0
     for _, sampled_batch in enumerate(tqdm(dataset, desc=f"Training with batch size ({args.batch_size})")):
         x = sampled_batch['image_aug']
         y = sampled_batch['image_gt_cropped']
@@ -81,28 +107,46 @@ def train(model, dataset, device, optimizer, epoch, args):
         # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
         pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
+        # pointcloud rendering output loss
+        rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
+        rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), x_sample, reduction='mean')
+
         if args.vae_mode:
             # ELBO (Evidence lower bound): the higher the better
             ELBO = recon_loss + kl_loss
             loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
         else:
-            loss = 0.01*recon_loss + 0.99*pose_loss
+            loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
 
         # backward pass
         loss.backward()
-        train_loss += loss.item()
-        
+
+        # loss summation (mean * num_data = summed square error)
+        train_loss_sum += loss.item()*len(sampled_batch)
+        recon_loss_sum += recon_loss.item()*len(sampled_batch)
+        pose_loss_sum += pose_loss.item()*len(sampled_batch)
+        rendering_loss_sum += rendering_loss.item()*len(sampled_batch)
+        num_trained_data += len(sampled_batch)
         # update the weights
         optimizer.step()
+    
+    # mean losses
+    train_loss_sum /= num_trained_data
+    recon_loss_sum /= num_trained_data
+    pose_loss_sum /= num_trained_data
+    rendering_loss_sum /= num_trained_data
 
-    return train_loss, recon_loss, pose_loss, recon_loss_full_pixel
+    return train_loss_sum, recon_loss_sum, pose_loss_sum, rendering_loss_sum, recon_loss_full_pixel
 
 def test(model, dataset, device, args, test_iter):
     # set the evaluation mode
     model.eval()
-    # test loss for the data
-    test_loss = 0
-
+    num_tested_data = 0
+    # loss of the epoch
+    test_loss_sum = 0
+    recon_loss_sum = 0
+    pose_loss_sum = 0
+    rendering_loss_sum = 0
     # we don't need to track the gradients, since we are not updating the parameters during evaluation / testing
     with torch.no_grad():
         for i, sampled_batch in enumerate(tqdm(dataset, desc=f" Testing with batch size ({args.batch_size})")):        
@@ -124,16 +168,32 @@ def test(model, dataset, device, args, test_iter):
             # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
             pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
+            # pointcloud rendering output loss
+            rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
+            rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), x_sample, reduction='mean')
+
             if args.vae_mode:
                 # total loss
                 ELBO = recon_loss + kl_loss
                 loss = ELBO + pose_loss
             else:
-                loss = 0.01*recon_loss + 0.99*pose_loss
+                loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
 
-            test_loss += loss.item()        
+            # loss summation (mean * num_data = summed square error)
+            test_loss_sum += loss.item()*len(sampled_batch)
+            recon_loss_sum += recon_loss.item()*len(sampled_batch)
+            pose_loss_sum += pose_loss.item()*len(sampled_batch)
+            rendering_loss_sum += rendering_loss.item()*len(sampled_batch)
+            num_tested_data += len(sampled_batch)
+
             if i == test_iter:
                 break
+        
+        # mean losses
+        test_loss_sum /= num_tested_data
+        recon_loss_sum /= num_tested_data
+        pose_loss_sum /= num_tested_data
+        rendering_loss_sum /= num_tested_data
     
 
     # if generate_plot:
@@ -150,7 +210,7 @@ def test(model, dataset, device, args, test_iter):
     #     plt.savefig('./results/pose_result.png')
     #     plt.close()
 
-    return test_loss, recon_loss, pose_loss, pose_est, pose_gt, x_sample, x, y, image_aug
+    return test_loss_sum, recon_loss_sum, pose_loss_sum, rendering_loss_sum, pose_est, pose_gt, x_sample, x, y, image_aug, rendered_imgs
 
 
 def main(args):    
@@ -219,38 +279,53 @@ def main(args):
         for f in files:
             os.remove(f)        
         
+        # CHECKPOINT_DIR
+        CHECKPOINT_DIR = 'checkpoints'
+        try:
+            os.mkdir(CHECKPOINT_DIR)
+        except(FileExistsError):
+            pass
+        
         best_test_loss = float('inf')
         loss_list = []
-
+        
+        # create csv file and write summary note header
+        summary_note_header = f'Epoch, Train Recon Loss, Test Recon Loss, R Loss train, R Loss test, Rendering Loss train, Rendering Loss test, Train Time, Test Time'
+        summary_file = open("results/summary_note.txt", 'w')
+        summary_file.write(summary_note_header + '\n')
+        summary_file.close()
         for e in range(N_EPOCHS):
 
             start_time = time.time()
-            train_loss, recon_loss_train, pose_loss_train, recon_loss_train_full = train(model, train_iterator, device, optimizer, e, args)
+            train_loss, recon_loss_train, pose_loss_train, rendering_loss_train, recon_loss_train_full = train(model, train_iterator, device, optimizer, e, args)
             train_time = time.time() - start_time
             start_time = time.time()
-            test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)            
-            test_time = time.time() - start_time
+            test_loss, recon_loss_test, pose_loss_test, rendering_loss_test, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)            
+            test_time = time.time() - start_time            
             
-            recon_loss_train /= len(lm_dataset_train)
-            recon_loss_test /= len(lm_dataset_test)
-            pose_loss_train /= len(lm_dataset_train)
-            pose_loss_test /= len(lm_dataset_test)
+            # print and save loss summary note
+            summary_note = f'Epoch: {e:3d}, Train Recon Loss: {recon_loss_train:.6f}, Test Recon Loss: {recon_loss_test:.6f}, R Loss train: {pose_loss_train:.6f}, R Loss test: {pose_loss_test:.6f}, Rendering Loss train: {rendering_loss_train:.6f}, Rendering Loss test: {rendering_loss_test:.6f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}'            
+            print(summary_note)
+            summary_data = f'{e},{recon_loss_train:.6f},{recon_loss_test:.6f},{pose_loss_train:.6f},{pose_loss_test:.6f},{rendering_loss_train:.6f},{rendering_loss_test:.6f},{(train_time):.2f},{(test_time):.2f}'
+            summary_file = open("results/summary_note.txt", 'a')
+            summary_file.write(summary_data + '\n')
+            summary_file.close()
 
-            print(f'Epoch: {e:3d}, Train Recon Loss: {recon_loss_train:.6f}, Test Recon Loss: {recon_loss_test:.6f}, R Loss train: {pose_loss_train:.6f}, R Loss test: {pose_loss_test:.6f}, Train Time: {(train_time):.2f}, Test Time: {(test_time):.2f}')
-                        
             if args.plot_recon:
                 # reconstruction from random latent variable
-                _, _, _, _, _, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train = test(model, sample_iterator_train, device, args, test_iter=0)
-                _, _, _, _, _, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test = test(model, sample_iterator_test, device, args, test_iter=0)
-                generate_and_save_images(model, e, reconstructed_image_train, image_aug_train, gt_image_train, reconstructed_image_test, input_image_test, gt_image_test)
+                _, _, _, _, _, _, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train, rendered_imgs_train = test(model, sample_iterator_train, device, args, test_iter=0)
+                _, _, _, _, _, _, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test, rendered_imgs_test = test(model, sample_iterator_test, device, args, test_iter=0)
+                generate_and_save_images(model, e, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
 
             # save loss curve
-            loss_list.append([e, recon_loss_train, recon_loss_test, pose_loss_train, pose_loss_test])
+            loss_list.append([e, recon_loss_train, recon_loss_test, pose_loss_train, pose_loss_test, rendering_loss_train, rendering_loss_test])
             plt.plot(np.array(loss_list)[:,0], np.array(loss_list)[:,1], color='b', marker='.')
             plt.plot(np.array(loss_list)[:,0], np.array(loss_list)[:,2], color='g', marker='.')
             plt.plot(np.array(loss_list)[:,0], np.array(loss_list)[:,3], color='b', linestyle='--')
             plt.plot(np.array(loss_list)[:,0], np.array(loss_list)[:,4], color='g', linestyle='--')
-            plt.legend(['Train recon loss', 'Test recon loss', 'Train R loss', 'Test R loss'])
+            plt.plot(np.array(loss_list)[:,0], np.array(loss_list)[:,5], color='b', linestyle='-.')
+            plt.plot(np.array(loss_list)[:,0], np.array(loss_list)[:,6], color='g', linestyle='-.')
+            plt.legend(['Train recon loss', 'Test recon loss', 'Train R loss', 'Test R loss', 'Train rendering', 'Test rendering'])
             plt.xlabel('Epochs')
             plt.ylabel('Loss')
             plt.grid()
@@ -272,16 +347,10 @@ def main(args):
         print(f'Total number of test images: {len(lm_dataset_test)}')
         model = torch.load('./checkpoints/model_best.pth.tar')
 
-        # start_time = time.time()
-        # test_loss, pose_loss, _, _, _, _, _ = test(model, test_iterator, device, vae_mode=args.vae_mode, test_iter=None)
-        # test_time = time.time() - start_time
-        # test_loss /= len(lm_dataset_test)
-        # print(f'Test Loss: {test_loss:.6f}, R matrix Loss: {pose_loss:.6f}, Test Time: {(test_time):.2f}')
-
         # compute one sample for checking rotation matrix
-        _, _, _, pose_est_train, pose_gt_train, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train = test(model, sample_iterator_train, device, args, test_iter=0)
-        _, _, _, pose_est_test, pose_gt_test, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test = test(model, sample_iterator_test, device, args, test_iter=0)
-        generate_and_save_images(model, 9999, reconstructed_image_train, image_aug_train, gt_image_train, reconstructed_image_test, input_image_test, gt_image_test)
+        _, _, _, _, pose_est_train, pose_gt_train, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train, rendered_imgs_train = test(model, sample_iterator_train, device, args, test_iter=0)
+        _, _, _, _, pose_est_test, pose_gt_test, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test, rendered_imgs_test = test(model, sample_iterator_test, device, args, test_iter=0)
+        generate_and_save_images(model, 9999, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
         
         pose_train = np.hstack((pose_gt_train[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_train[0].cpu().numpy().transpose().reshape((-1,1))))
         pose_test = np.hstack((pose_gt_test[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_test[0].cpu().numpy().transpose().reshape((-1,1))))
@@ -289,6 +358,10 @@ def main(args):
         print(f'{pose_train}')
         print(f'Pose estimation result (test: [GT , Estimation])')
         print(f'{pose_test}')
+
+        test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)
+        
+        print(f'Test Loss: {test_loss:.6f}, R matrix Loss: {pose_loss_test:.6f}')
         
     else:
         print("'{}' is not recognized. Use 'train' or 'evaluate'".format(args.command))
