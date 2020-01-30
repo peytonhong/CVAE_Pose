@@ -26,7 +26,7 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 * 4th row: Rendered (rotated) images
 
 ### Rotation loss comparison
-~* Without pointcloud rendering: TBD~
+~ * Without pointcloud rendering: TBD~
 * With pointcloud rendering: 0.137
 
 ~**This result shows that the pointcloud rendering is useful for pose estimation.**~
