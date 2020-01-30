@@ -6,7 +6,7 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 **Pointcloud 3d model is rendered along with the estimated rotation angle. The rendered (and rotated) images are then evaluated with the output of decoder using MSE loss.**
 
 ### Network Architecture
-![Architecture](https://github.com/peytonhong/CVAE_Pose/blob/rendering/docs/structure(rendering).png)
+![Architecture](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/structure(rendering).png)
 
 * Input image
   * LineMod dataset (duck) with various augmentation. (Random bubble, Random background, Random scale, Gamma correction)
@@ -16,7 +16,7 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
   * Rotation matrix (3x3)
 
 ### Reconstructed image
-![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/rendering/docs/image_at_epoch_9999(modified).png)
+![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/image_at_epoch_9999(modified).png)
 ##### Reconstructed Image Description
 * Left: Training results
 * Right: Test results.
@@ -26,7 +26,7 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 * 4th row: Rendered (rotated) images
 
 ### Rotation loss comparison
-* Without pointcloud: 0.000137
-* With pointcloud: 0.000078
+~* Without pointcloud rendering: TBD~
+* With pointcloud rendering: 0.137
 
-**This result shows that the pointcloud rendering is useful for pose estimation.**
+~**This result shows that the pointcloud rendering is useful for pose estimation.**~
