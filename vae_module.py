@@ -31,13 +31,19 @@ class Encoder(nn.Module):
         # self.z_mu = nn.Linear(in_features=self.fc_input_dim, out_features=z_dim)
         # self.z_var= nn.Linear(in_features=self.fc_input_dim, out_features=z_dim)
         self.fc= nn.Linear(in_features=self.fc_input_dim, out_features=z_dim*2)
+        self.bn1 = nn.BatchNorm2d(num_features=int(self.max_channel/8))
+        self.bn2 = nn.BatchNorm2d(num_features=int(self.max_channel/4))
+        self.bn3 = nn.BatchNorm2d(num_features=int(self.max_channel/2))        
 
     def forward(self, x):        
         # x is of shape [batch_size, input_dim]
         # hidden = F.relu(self.linear(x))
         x = self.maxpool(F.relu(input=self.conv1(x)))
+        x = self.bn1(x)
         x = self.maxpool(F.relu(input=self.conv2(x)))
+        x = self.bn2(x)
         x = self.maxpool(F.relu(input=self.conv3(x)))
+        x = self.bn3(x)
         x = self.maxpool(F.relu(input=self.conv4(x)))
         x = x.view(-1, int(self.max_channel*(self.input_dim[0]/16)*(self.input_dim[1]/16)))
         # hidden is of shape [batch_size, hidden_dim]
@@ -72,14 +78,20 @@ class Decoder(nn.Module):
         self.dconv2 = nn.ConvTranspose2d(in_channels=int(self.max_channel/2),    out_channels=int(self.max_channel/4), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv3 = nn.ConvTranspose2d(in_channels=int(self.max_channel/4),    out_channels=int(self.max_channel/8), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=3,   kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.bn1 = nn.BatchNorm2d(num_features=int(self.max_channel/2))
+        self.bn2 = nn.BatchNorm2d(num_features=int(self.max_channel/4))
+        self.bn3 = nn.BatchNorm2d(num_features=int(self.max_channel/8))
 
     def forward(self, x):
         # x is of shape [batch_size, latent_dim]
         x = self.fc(x)
         x = x.view(-1, self.max_channel, int(self.output_dim[0]/16), int(self.output_dim[1]/16))
         x = F.relu(self.dconv1(x))
+        x = self.bn1(x)
         x = F.relu(self.dconv2(x))
+        x = self.bn2(x)
         x = F.relu(self.dconv3(x))
+        x = self.bn3(x)
         x = torch.sigmoid(self.dconv4(x))
         # hidden = F.relu(self.linear(x))
         # hidden is of shape [batch_size, hidden_dim]
