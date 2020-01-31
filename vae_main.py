@@ -226,7 +226,7 @@ def main(args):
     N_EPOCHS = args.num_epochs       # times to run the model on complete data
     INPUT_DIM = (128, 128) # size of each input (width, height)
     LATENT_DIM = args.latent_dim     # latent vector dimension
-    lr = 2e-4           # learning rate
+    lr = 1e-3           # learning rate
     max_channel = args.max_channel
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -266,9 +266,14 @@ def main(args):
 
     # DataParallel for Multi GPU
     model = nn.DataParallel(model).to(device)
-
+    print(model)
     # optimizer
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    # optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam([{'params': model.module.enc.parameters()},
+                            {'params': model.module.dec.parameters()},
+                            {'params': model.module.pose.parameters(), 'lr':1e-2}
+                            ], lr=lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.8, verbose=True)
 
     if args.command == 'train':
 
@@ -314,6 +319,9 @@ def main(args):
             summary_file = open("results/summary_note.txt", 'a')
             summary_file.write(summary_data + '\n')
             summary_file.close()
+
+            # scheduler (# Note that step should be called after validate())
+            scheduler.step(pose_loss_test)
 
             if args.plot_recon:
                 # reconstruction from random latent variable
