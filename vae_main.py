@@ -118,6 +118,7 @@ def train(model, dataset, device, optimizer, epoch, args):
             loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
         else:
             loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
+            loss = 0.33*recon_loss + 0.33*pose_loss + 0.33*rendering_loss
 
         # backward pass
         loss.backward()
@@ -178,7 +179,8 @@ def test(model, dataset, device, args, test_iter):
                 ELBO = recon_loss + kl_loss
                 loss = ELBO + pose_loss
             else:
-                loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
+                # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
+                loss = 0.33*recon_loss + 0.33*pose_loss + 0.33*rendering_loss
 
             # loss summation (mean * num_data = summed square error)
             test_loss_sum += loss.item()*len(sampled_batch)
@@ -321,7 +323,7 @@ def main(args):
             summary_file.close()
 
             # scheduler (# Note that step should be called after validate())
-            scheduler.step(pose_loss_test)
+            # scheduler.step(pose_loss_test)
 
             if args.plot_recon:
                 # reconstruction from random latent variable
