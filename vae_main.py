@@ -118,7 +118,11 @@ def train(model, dataset, device, optimizer, epoch, args):
             loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
         else:
             # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
+<<<<<<< HEAD
             loss = 0.2*recon_loss + 0.6*pose_loss + 0.2*rendering_loss
+=======
+            loss = 0.33*recon_loss + 0.33*pose_loss + 0.33*rendering_loss
+>>>>>>> 8e9bfd67ef7551cb4819299a6e1b9a088dbbec57
 
         # backward pass
         loss.backward()

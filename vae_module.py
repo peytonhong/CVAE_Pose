@@ -39,10 +39,13 @@ class Encoder(nn.Module):
     def forward(self, x):        
         # x is of shape [batch_size, input_dim]
         # hidden = F.relu(self.linear(x))
-        x = self.maxpool(self.bn1(F.relu(input=self.conv1(x))))
-        x = self.maxpool(self.bn2(F.relu(input=self.conv2(x))))
-        x = self.maxpool(self.bn3(F.relu(input=self.conv3(x))))
-        x = self.maxpool(self.bn4(F.relu(input=self.conv4(x))))
+        x = self.maxpool(F.relu(input=self.conv1(x)))
+        x = self.bn1(x)
+        x = self.maxpool(F.relu(input=self.conv2(x)))
+        x = self.bn2(x)
+        x = self.maxpool(F.relu(input=self.conv3(x)))
+        x = self.bn3(x)
+        x = self.maxpool(F.relu(input=self.conv4(x)))
         x = x.view(-1, int(self.max_channel*(self.input_dim[0]/16)*(self.input_dim[1]/16)))
         # hidden is of shape [batch_size, hidden_dim]
         z = self.fc(x)
