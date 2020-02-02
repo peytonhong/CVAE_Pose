@@ -117,8 +117,8 @@ def train(model, dataset, device, optimizer, epoch, args):
             ELBO = recon_loss + kl_loss
             loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
         else:
-            loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
-            loss = 0.33*recon_loss + 0.33*pose_loss + 0.33*rendering_loss
+            # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
+            loss = 0.2*recon_loss + 0.6*pose_loss + 0.2*rendering_loss
 
         # backward pass
         loss.backward()
@@ -180,7 +180,7 @@ def test(model, dataset, device, args, test_iter):
                 loss = ELBO + pose_loss
             else:
                 # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
-                loss = 0.33*recon_loss + 0.33*pose_loss + 0.33*rendering_loss
+                loss = 0.2*recon_loss + 0.6*pose_loss + 0.2*rendering_loss
 
             # loss summation (mean * num_data = summed square error)
             test_loss_sum += loss.item()*len(sampled_batch)
