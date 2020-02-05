@@ -38,7 +38,7 @@ def argparse_args():
   parser.add_argument('--num_epochs', default=50, type=int, help="The number of epochs to run")
   parser.add_argument('--batch_size', default=200, type=int, help="The number of batchs for each epoch")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
-  parser.add_argument('--rendering', default=str2bool, help="True: Use rendering images from pointcloud model")
+  parser.add_argument('--rendering', default=False, type=str2bool, help="True: Use rendering images from pointcloud model")
   parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
   parser.add_argument('--plot_recon', default=True, type=bool, help="True: creates reconstructed image on each epoch")
   parser.add_argument('--bootstrap', default=False, type=bool, help="True: Bootstrapped L2 loss for each pixel")
