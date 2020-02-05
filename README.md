@@ -15,8 +15,11 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 * Output (FC)
   * Rotation matrix (3x3)
 
-### Reconstructed image
-![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/image_at_epoch_9999(modified).png)
+### Reconstructed image (include rendering)
+![Reconstructed image_ae](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/image_at_epoch_9999(rendering).png)
+### Reconstructed image (no rendering)
+![Reconstructed image_ae (no rendering)](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/image_at_epoch_9999(no_rendering).png)
+
 ##### Reconstructed Image Description
 * Left: Training results
 * Right: Test results.
@@ -26,7 +29,13 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 * 4th row: Rendered (rotated) images
 
 ### Rotation loss comparison
-~* Without pointcloud rendering: TBD~
+* Without pointcloud rendering: 0.170
 * With pointcloud rendering: 0.137
 
-~**This result shows that the pointcloud rendering is useful for pose estimation.**~
+**This result shows that the pointcloud rendering is useful for pose estimation. However, the loss curve in rendering case is not stable since the renderer doesn't have gradients and the rendering result largely depends on initial condition of weight parameters.**
+
+
+### Loss curve (include rendering)
+![Loss curve_ae](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/loss_curve(rendering).png)
+### Loss curve (no rendering)
+![Loss curve_ae (no rendering)](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/loss_curve(no_rendering).png)
