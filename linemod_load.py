@@ -210,7 +210,7 @@ class LineModDataset(Dataset):
             image_aug = copy.deepcopy(image_cropped)        
             image_aug = self.image_augmentation_color_change(image_aug) # gamma correction
             image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
-            # image_aug = self.image_augmentation_random_circle(copy.deepcopy(image_aug))
+            image_aug = self.image_augmentation_random_circle(copy.deepcopy(image_aug))
             # image_aug = self.image_augmentation_blur(image_aug)            
         else:
             image_aug = image_cropped
