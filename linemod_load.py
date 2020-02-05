@@ -15,11 +15,12 @@ from plyfile import PlyData
 from rendering.renderer_xyz import Renderer
 from rendering.model import Model3D
 from sys import platform
+import time
 
 class LineModDataset(Dataset):
     """ Loading LineMod Dataset for Pose Estimation """
 
-    def __init__(self, root_dir, background_dir, task, object_number, transform=None, augmentation=False, use_offline_data=True):
+    def __init__(self, root_dir, background_dir, task, object_number, transform=None, augmentation=False, rendering=False, use_offline_data=True, use_useful_data=True):
         """
         Args:
             root_dir (string): Path to the LineMod dataset.
@@ -40,18 +41,24 @@ class LineModDataset(Dataset):
         self.mask_path = self.object_path / 'mask'
         self.masks = sorted(glob.glob(str(self.mask_path / '*')))
         self.augmentation = augmentation
+        self.rendering = rendering
         self.use_offline_data = use_offline_data
-    
+        self.use_useful_data = use_useful_data
+        self.images_useful = []
+
         # image augmentation paths (To reduce training time by saving augmented images in advance)
         self.max_num_aug_images = 20000
         self.cropped_image_path = self.object_path / 'rgb_cropped'
-        self.aug_image_path = self.object_path / 'rgb_aug'
+        self.aug_image_path = self.object_path / 'rgb_aug'           
+        self.aug_useful_path = self.object_path / 'rgb_useful'
         self.cropped_mask_path = self.object_path / 'mask_cropped'
         self.gt_image_path = self.object_path / 'rbg_gt_cropped'
         if not self.cropped_image_path.exists():
             self.cropped_image_path.mkdir()
         if not self.aug_image_path.exists():
             self.aug_image_path.mkdir()
+        if not self.aug_useful_path.exists():
+            self.aug_useful_path.mkdir()
         if not self.cropped_mask_path.exists():
             self.cropped_mask_path.mkdir()
         if not self.gt_image_path.exists():
@@ -70,26 +77,27 @@ class LineModDataset(Dataset):
             self.images_cropped = sorted(self.cropped_image_path.glob('*'))
             self.masks_cropped = sorted(self.cropped_mask_path.glob('*'))
             self.images_aug = sorted(self.aug_image_path.glob('*'))
-            self.images_gt_cropped = sorted(self.gt_image_path.glob('*'))
+            self.images_gt_cropped = sorted(self.gt_image_path.glob('*'))        
 
         # pointcloud model data import
-        model_path = str(self.root_dir / 'models' / f'obj_{object_number:06d}.ply')
-        if platform == 'win32': # only for Windows
-            model_path = model_path.replace(os.sep, os.altsep) # replace '\' to '/'
-        self.obj_model = Model3D()
-        self.obj_model.load(model_path, scale=0.001)        
-        # model_data = PlyData.read(model_path)        
-        # (self.model_x, self.model_y, self.model_z) = (np.array(model_data['vertex'][t]) for t in ('x', 'y', 'z'))
-        # (r, g, b, a) = (np.array(model_data['vertex'][t])/255 for t in ('red', 'green', 'blue', 'alpha'))
-        # self.model_colors = np.vstack((r,g,b,a)).transpose()
-        scene_camera_path = self.root_dir / 'train' / f'{object_number:06d}' / 'scene_camera.json'
-        with open(scene_camera_path) as json_file:
-            scene_camera = json.load(json_file)
-        cam_K = scene_camera['0']['cam_K']
-        cam_K = np.array(cam_K).reshape((3,3))
-        cam_T = gt['0'][0]['cam_t_m2c']
-        self.cam_T = np.array(cam_T) / 1000 # [mm] -> [m]        
-        self.ren = Renderer((640, 480), cam_K) # shape: (width, height)
+        if self.rendering:
+            model_path = str(self.root_dir / 'models' / f'obj_{object_number:06d}.ply')
+            if platform == 'win32': # only for Windows
+                model_path = model_path.replace(os.sep, os.altsep) # replace '\' to '/'
+            self.obj_model = Model3D()
+            self.obj_model.load(model_path, scale=0.001)        
+            # model_data = PlyData.read(model_path)        
+            # (self.model_x, self.model_y, self.model_z) = (np.array(model_data['vertex'][t]) for t in ('x', 'y', 'z'))
+            # (r, g, b, a) = (np.array(model_data['vertex'][t])/255 for t in ('red', 'green', 'blue', 'alpha'))
+            # self.model_colors = np.vstack((r,g,b,a)).transpose()
+            scene_camera_path = self.root_dir / 'train' / f'{object_number:06d}' / 'scene_camera.json'
+            with open(scene_camera_path) as json_file:
+                scene_camera = json.load(json_file)
+            cam_K = scene_camera['0']['cam_K']
+            cam_K = np.array(cam_K).reshape((3,3))
+            cam_T = gt['0'][0]['cam_t_m2c']
+            self.cam_T = np.array(cam_T) / 1000 # [mm] -> [m]        
+            self.ren = Renderer((640, 480), cam_K) # shape: (width, height)
         
     def __len__(self):
         if self.use_offline_data:
@@ -125,7 +133,7 @@ class LineModDataset(Dataset):
             image_aug = sample['image_aug']
             image_gt_cropped = sample['image_gt_cropped']
             pose = sample['pose']
-        
+
         image = (cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
         image_aug = (cv2.cvtColor(image_aug, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
         image_cropped = (cv2.cvtColor(image_cropped, cv2.COLOR_BGR2RGB) / 255).astype(np.float32)
@@ -133,10 +141,29 @@ class LineModDataset(Dataset):
         # mask_cropped = (mask_cropped / 255).astype(np.float32)
 
         sample = {'image': image, 'image_cropped': image_cropped, 'mask_cropped': mask_cropped, 'image_aug': image_aug, 'image_gt_cropped': image_gt_cropped, 'pose': pose}
-        
+        if self.use_useful_data:
+            self.images_useful.append({'image_aug':image_aug, 'label': int(Path(self.images[idx]).stem[:6])})
+
         if self.transform:
             sample = self.transform(sample)
         return sample
+
+    def save_useful_images(self):
+        print(f'Saving useful {len(self.images_useful)} images due to largely decreased test R loss.')
+        current_time = str(int(time.time()))
+        for sample in self.images_useful:
+            image_aug = (cv2.cvtColor(sample['image_aug'], cv2.COLOR_BGR2RGB)*255).astype(np.uint8)
+            label = sample['label']            
+            cv2.imwrite((str(self.aug_useful_path / Path(f'{label:06d}')) + '_' + current_time + '.png'), image_aug)
+        self.images_useful = []
+    
+    def remove_useful_images(self):
+        # delete all existing useful images
+        print(f'Remove existing useful images.')
+        files = glob.glob(str(self.aug_useful_path) + '/*')
+        for f in files:
+            os.remove(f)
+
 
     def save_sample_images(self):
         num_aug_images = len(sorted(self.aug_image_path.glob('*')))
@@ -183,7 +210,7 @@ class LineModDataset(Dataset):
             image_aug = copy.deepcopy(image_cropped)        
             image_aug = self.image_augmentation_color_change(image_aug) # gamma correction
             image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
-            image_aug = self.image_augmentation_random_circle(copy.deepcopy(image_aug))
+            # image_aug = self.image_augmentation_random_circle(copy.deepcopy(image_aug))
             # image_aug = self.image_augmentation_blur(image_aug)            
         else:
             image_aug = image_cropped

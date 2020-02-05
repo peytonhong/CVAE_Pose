@@ -18,6 +18,17 @@ from pathlib import Path
 from tqdm import tqdm
 import cv2
 
+def str2bool(v):
+    # Converts True or False for argparse
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 """parsing and configuration"""
 def argparse_args():  
   desc = "Pytorch implementation of 'Convolutional Augmented Variational AutoEncoder (CAVAE)'"
@@ -27,11 +38,12 @@ def argparse_args():
   parser.add_argument('--num_epochs', default=50, type=int, help="The number of epochs to run")
   parser.add_argument('--batch_size', default=200, type=int, help="The number of batchs for each epoch")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
+  parser.add_argument('--rendering', default=str2bool, help="True: Use rendering images from pointcloud model")
   parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
   parser.add_argument('--plot_recon', default=True, type=bool, help="True: creates reconstructed image on each epoch")
   parser.add_argument('--bootstrap', default=False, type=bool, help="True: Bootstrapped L2 loss for each pixel")
-  parser.add_argument('--resume', default=False, type=bool, help="True: Load the trained model and resume training")
-
+  parser.add_argument('--resume', default=False, type=bool, help="True: Load the trained model and resume training")  
+  
   return parser.parse_args()
 
 def get_rendering(obj_model,rot_pose,tra_pose, ren):
@@ -109,16 +121,22 @@ def train(model, dataset, device, optimizer, epoch, args):
         pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
         # pointcloud rendering output loss
-        rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
-        rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), x_sample, reduction='mean')
+        if args.rendering:
+            rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
+            rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), y, reduction='mean')
+        # else:
+        #     rendered_imgs = torch.ones_like(y).cpu().detach().numpy()
 
         if args.vae_mode:
             # ELBO (Evidence lower bound): the higher the better
             ELBO = recon_loss + kl_loss
             loss = ELBO + pose_loss # apply gradient descent (loss to be lower)
         else:
-            # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
-            loss = 0.2*recon_loss + 0.6*pose_loss + 0.2*rendering_loss
+            if args.rendering:
+                # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
+                loss = 0.3*recon_loss + 0.5*pose_loss + 0.2*rendering_loss
+            else:
+                loss = 0.3*recon_loss + 0.7*pose_loss
 
         # backward pass
         loss.backward()
@@ -127,7 +145,7 @@ def train(model, dataset, device, optimizer, epoch, args):
         train_loss_sum += loss.item()*len(sampled_batch)
         recon_loss_sum += recon_loss.item()*len(sampled_batch)
         pose_loss_sum += pose_loss.item()*len(sampled_batch)
-        rendering_loss_sum += rendering_loss.item()*len(sampled_batch)
+        
         num_trained_data += len(sampled_batch)
         # update the weights
         optimizer.step()
@@ -136,7 +154,9 @@ def train(model, dataset, device, optimizer, epoch, args):
     train_loss_sum /= num_trained_data
     recon_loss_sum /= num_trained_data
     pose_loss_sum /= num_trained_data
-    rendering_loss_sum /= num_trained_data
+    if args.rendering:
+        rendering_loss_sum += rendering_loss.item()*len(sampled_batch)
+        rendering_loss_sum /= num_trained_data
 
     return train_loss_sum, recon_loss_sum, pose_loss_sum, rendering_loss_sum, recon_loss_full_pixel
 
@@ -171,22 +191,28 @@ def test(model, dataset, device, args, test_iter):
             pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
 
             # pointcloud rendering output loss
-            rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
-            rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), x_sample, reduction='mean')
+            if args.rendering:
+                rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
+                rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), y, reduction='mean')
+            else:
+                rendered_imgs = torch.ones_like(y).cpu().detach().numpy()
 
             if args.vae_mode:
                 # total loss
                 ELBO = recon_loss + kl_loss
                 loss = ELBO + pose_loss
             else:
-                # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
-                loss = 0.2*recon_loss + 0.6*pose_loss + 0.2*rendering_loss
+                if args.rendering:
+                    # loss = 0.1*recon_loss + 0.8*pose_loss + 0.1*rendering_loss
+                    loss = 0.3*recon_loss + 0.5*pose_loss + 0.2*rendering_loss
+                else:
+                    loss = 0.3*recon_loss + 0.7*pose_loss
 
             # loss summation (mean * num_data = summed square error)
             test_loss_sum += loss.item()*len(sampled_batch)
             recon_loss_sum += recon_loss.item()*len(sampled_batch)
             pose_loss_sum += pose_loss.item()*len(sampled_batch)
-            rendering_loss_sum += rendering_loss.item()*len(sampled_batch)
+            
             num_tested_data += len(sampled_batch)
 
             if i == test_iter:
@@ -196,7 +222,9 @@ def test(model, dataset, device, args, test_iter):
         test_loss_sum /= num_tested_data
         recon_loss_sum /= num_tested_data
         pose_loss_sum /= num_tested_data
-        rendering_loss_sum /= num_tested_data
+        if args.rendering:
+            rendering_loss_sum += rendering_loss.item()*len(sampled_batch)
+            rendering_loss_sum /= num_tested_data
     
 
     # if generate_plot:
@@ -228,15 +256,16 @@ def main(args):
     N_EPOCHS = args.num_epochs       # times to run the model on complete data
     INPUT_DIM = (128, 128) # size of each input (width, height)
     LATENT_DIM = args.latent_dim     # latent vector dimension
-    lr = 1e-3           # learning rate
+    lr = 1e-4           # learning rate
+    lr_pose = 1e-5      # learning rate for pose
     max_channel = args.max_channel
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # train_iterator = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     # test_iterator = DataLoader(test_dataset, batch_size=BATCH_SIZE)
     transform = transforms.Compose([ToTensor()])
-    lm_dataset_train = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='train', object_number=9, transform=transform, augmentation=True, use_offline_data=False) # for duck object
-    lm_dataset_test = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='test', object_number=9, transform=transform, augmentation=False, use_offline_data=True) # for duck object
+    lm_dataset_train = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='train', object_number=9, transform=transform, augmentation=True, rendering=args.rendering, use_offline_data=False, use_useful_data=True) # for duck object
+    lm_dataset_test = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='test', object_number=9, transform=transform, augmentation=False, rendering=args.rendering, use_offline_data=True, use_useful_data=False) # for duck object
     train_iterator = DataLoader(dataset=lm_dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     test_iterator = DataLoader(dataset=lm_dataset_test, batch_size=BATCH_SIZE, shuffle=True)
     sample_iterator_train = DataLoader(dataset=lm_dataset_train, batch_size=4, shuffle=True)
@@ -273,7 +302,7 @@ def main(args):
     # optimizer = optim.Adam(model.parameters(), lr=lr)
     optimizer = optim.Adam([{'params': model.module.enc.parameters()},
                             {'params': model.module.dec.parameters()},
-                            {'params': model.module.pose.parameters(), 'lr':1e-2}
+                            {'params': model.module.pose.parameters(), 'lr':lr_pose}
                             ], lr=lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.8, verbose=True)
 
@@ -288,7 +317,7 @@ def main(args):
         # delete all existing files
         files = glob.glob(RESULTS_DIR+'/*')
         for f in files:
-            os.remove(f)        
+            os.remove(f)
         
         # CHECKPOINT_DIR
         CHECKPOINT_DIR = 'checkpoints'
@@ -298,6 +327,7 @@ def main(args):
             pass
         
         best_test_loss = float('inf')
+        pose_loss_test_prev = float('inf')
         loss_list = []
         
         # create csv file and write summary note header
@@ -346,9 +376,14 @@ def main(args):
             plt.savefig('./results/loss_curve.png')            
             plt.close()            
 
+            if (e > 0) & ((pose_loss_test_prev - pose_loss_test) > 0.05):
+                lm_dataset_train.save_useful_images()
+            lm_dataset_train.images_useful = []
+            pose_loss_test_prev = pose_loss_test
+
             if best_test_loss > pose_loss_test:
                 best_test_loss = pose_loss_test
-                torch.save(model, './checkpoints/model_best.pth.tar')
+                torch.save(model, './checkpoints/model_best.pth.tar')                
                 patience_counter = 1
             else:
                 patience_counter += 1
@@ -382,10 +417,12 @@ def main(args):
 
 
 if __name__ == '__main__':
-  # parse arguments
-  args = argparse_args()
-  if args is None:
-      exit()
-
-  # main
-  main(args)
+    
+    # parse arguments
+    args = argparse_args()
+    if args is None:
+        exit()
+    print(args)
+    print(f'args.rendering: {args.rendering}')
+    # main
+    main(args)
