@@ -192,5 +192,6 @@ def generate_and_save_images(model, epoch, reconstructed_image_train, input_imag
     fig = plt.figure()
     plt.imshow(total_image)
     plt.axis('off')
-    plt.savefig('./results/image_at_epoch_{:04d}.png'.format(epoch))
+    plt.subplots_adjust(left = 0, bottom = 0, right = 1, top = 1, hspace = 0, wspace = 0)
+    plt.savefig('./results/image_at_epoch_{:04d}.png'.format(epoch), bbox_inches='tight')
     plt.close(fig)
