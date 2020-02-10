@@ -211,7 +211,7 @@ class LineModDataset(Dataset):
             image_aug = self.image_augmentation_color_change(image_aug) # gamma correction
             image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
             image_aug = self.image_augmentation_random_circle(copy.deepcopy(image_aug))
-            # image_aug = self.image_augmentation_blur(image_aug)            
+            image_aug = self.image_augmentation_blur(image_aug)            
         else:
             image_aug = image_cropped
         pose = self.R_matrix[idx].astype(np.float32)
@@ -251,18 +251,24 @@ class LineModDataset(Dataset):
         
         return image_cropped, image_gt_cropped, mask_cropped
         
-    def adjust_gamma(self, image, gamma=1.0):        
+    def adjust_gamma(self, image):
+        ''' random gamma correction '''
+        gamma = np.random.rand(1) + 0.5 # gamma range: 0.5~1.5
         invGamma = 1.0 / gamma
         table = np.array([((i / 255.0) ** invGamma) * 255
             for i in np.arange(0, 256)]).astype("uint8")
         return cv2.LUT(image, table)
 
+    def adjust_contrast(self, image):
+        ''' random contrast (RGB value change from 50% to 150%) '''
+        alpha = np.random.rand()*0.6 + 0.7
+        return np.clip((alpha*image), 0, 255).astype(np.uint8)
 
     def image_augmentation_color_change(self, image):
-        ''' color change from gamma correction '''
-        gamma = np.random.rand(1) + 0.5 # gamma range: 0.5~1.5
-        gamma_corrected_image = self.adjust_gamma(image, gamma=gamma)
-        return gamma_corrected_image
+        ''' color change '''        
+        image = self.adjust_gamma(image)
+        image = self.adjust_contrast(image)
+        return image
 
     def image_augmentation_blur(self, image):
         image_blurred = cv2.GaussianBlur(image, (3,3), cv2.BORDER_DEFAULT)
