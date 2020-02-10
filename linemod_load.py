@@ -224,11 +224,23 @@ class LineModDataset(Dataset):
         ''' 
         Output image and mask are cropped along the nonzero area and resized into 128*128 shape.
         '''        
-        y_min, x_min = bbox[0], bbox[1]
-        y_max, x_max = bbox[0]+bbox[2], bbox[1]+bbox[3]
-        image_cropped = image[x_min:x_max+1, y_min:y_max+1]
-        mask_cropped = mask[x_min:x_max+1, y_min:y_max+1]
+        x_min, y_min = bbox[0], bbox[1]
+        x_max, y_max = bbox[0]+bbox[2], bbox[1]+bbox[3]
+        # Mask area to be square (offset x or y points)
+        x_center = int((x_max + x_min)/2)
+        y_center = int((y_max + y_min)/2)
+        if (x_center - x_min) > (y_center - y_min):
+            y_offset = (x_center - x_min) - (y_center - y_min)
+            y_min -= y_offset
+            y_max += y_offset
+        elif (x_center - x_min) < (y_center - y_min):
+            x_offset = (y_center - y_min) - (x_center - x_min)
+            x_min -= x_offset
+            x_max += x_offset
         
+        image_cropped = image[y_min:y_max+1, x_min:x_max+1]
+        mask_cropped = mask[y_min:y_max+1, x_min:x_max+1]
+
         image_gt_cropped = cv2.bitwise_and(image_cropped, image_cropped, mask=mask_cropped)
 
         image_cropped = cv2.resize(image_cropped, (128,128), interpolation=cv2.INTER_LINEAR )
@@ -281,7 +293,7 @@ class LineModDataset(Dataset):
 
     def image_augmentation_random_circle(self, image):
         ''' Put random circles on the object for occlusion. '''
-        num_circles = np.random.choice(20,1)[0] # num_circles < 20 (random)
+        num_circles = np.random.choice(10,1)[0] # num_circles < 10 (random)
         h, w, c = image.shape
         for _ in range(num_circles):
             x = np.random.choice(h, 1)[0]
