@@ -35,14 +35,14 @@ def argparse_args():
   parser = argparse.ArgumentParser(description=desc)
   parser.add_argument('command', help="'train' or 'evaluate'")
   parser.add_argument('--latent_dim', default=128, type=int, help="Dimension of latent vector")
-  parser.add_argument('--num_epochs', default=50, type=int, help="The number of epochs to run")
+  parser.add_argument('--num_epochs', default=500, type=int, help="The number of epochs to run")
   parser.add_argument('--batch_size', default=200, type=int, help="The number of batchs for each epoch")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
   parser.add_argument('--rendering', default=False, type=str2bool, help="True: Use rendering images from pointcloud model")
-  parser.add_argument('--vae_mode', default=False, type=bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
-  parser.add_argument('--plot_recon', default=True, type=bool, help="True: creates reconstructed image on each epoch")
-  parser.add_argument('--bootstrap', default=False, type=bool, help="True: Bootstrapped L2 loss for each pixel")
-  parser.add_argument('--resume', default=False, type=bool, help="True: Load the trained model and resume training")  
+  parser.add_argument('--vae_mode', default=False, type=str2bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
+  parser.add_argument('--plot_recon', default=True, type=str2bool, help="True: creates reconstructed image on each epoch")
+  parser.add_argument('--bootstrap', default=False, type=str2bool, help="True: Bootstrapped L2 loss for each pixel")
+  parser.add_argument('--resume', default=False, type=str2bool, help="True: Load the trained model and resume training")  
   
   return parser.parse_args()
 
@@ -99,6 +99,7 @@ def train(model, dataset, device, optimizer, epoch, args):
         optimizer.zero_grad()
         # forward pass
         x_sample, z_mu, z_var, pose_est = model(x)
+        # x_sample, z, pose_est = model(x)
         # reconstruction loss : the lower the better (negative log likelihood)
         if args.bootstrap:        
             # bootstrap_factor = int((x.shape[-2]*x.shape[-1]) * (0.84**epoch))
@@ -113,7 +114,8 @@ def train(model, dataset, device, optimizer, epoch, args):
         
         if args.vae_mode:    
             # kl divergence loss : the lower the better
-            kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
+            print(args.vae_mode)
+            # kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
 
         # pose loss        
         # pose_est_polar = to_polar(pose_est, theta_sym=360)    
@@ -179,11 +181,13 @@ def test(model, dataset, device, args, test_iter):
             x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
             # forward pass
             x_sample, z_mu, z_var, pose_est = model(x)
+            # x_sample, z, pose_est = model(x)
             # reconstruction loss
             recon_loss = F.mse_loss(x_sample, y, reduction='mean')
             if args.vae_mode:
                 # kl divergence loss
-                kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
+                print(args.vae_mode)
+                # kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
             
             # pose loss
             # pose_est_polar = to_polar(pose_est, theta_sym=360)    
@@ -276,12 +280,12 @@ def main(args):
 
     random_vector_for_generation = torch.randn(size=[16, LATENT_DIM]).to(device)
 
-    # encoder
+    # # encoder
     encoder = Encoder(INPUT_DIM, LATENT_DIM, max_channel=max_channel)
 
-    # decoder
+    # # decoder
     decoder = Decoder(LATENT_DIM, INPUT_DIM, max_channel=max_channel)
-
+    
     # pose
     poseNet = Pose(LATENT_DIM)
 
@@ -290,10 +294,13 @@ def main(args):
     else:
         if args.vae_mode:
             # Variational Autoencoder
-            model = VAE(encoder, decoder, poseNet).to(device)
+            print('Variational Autoencoder model declaration')
+            # model = VAE(encoder, decoder, poseNet).to(device)
         else:
             # Autoencoder
             model = AE(encoder, decoder, poseNet).to(device)
+            # Extended Autoencoder
+            # model = Extended_AE(INPUT_DIM, LATENT_DIM, max_channel=max_channel, PoseNet=poseNet)
 
     # DataParallel for Multi GPU
     model = nn.DataParallel(model).to(device)
@@ -359,7 +366,7 @@ def main(args):
                 # reconstruction from random latent variable
                 _, _, _, _, _, _, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train, rendered_imgs_train = test(model, sample_iterator_train, device, args, test_iter=0)
                 _, _, _, _, _, _, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test, rendered_imgs_test = test(model, sample_iterator_test, device, args, test_iter=0)
-                generate_and_save_images(model, e, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
+                generate_and_save_images(args, model, e, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
 
             # save loss curve
             loss_list.append([e, recon_loss_train, recon_loss_test, pose_loss_train, pose_loss_test, rendering_loss_train, rendering_loss_test])
@@ -399,7 +406,7 @@ def main(args):
         # compute one sample for checking rotation matrix
         _, _, _, _, pose_est_train, pose_gt_train, reconstructed_image_train, input_image_train, gt_image_train, image_aug_train, rendered_imgs_train = test(model, sample_iterator_train, device, args, test_iter=0)
         _, _, _, _, pose_est_test, pose_gt_test, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test, rendered_imgs_test = test(model, sample_iterator_test, device, args, test_iter=0)
-        generate_and_save_images(model, 9999, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
+        generate_and_save_images(args, model, 9999, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
         
         pose_train = np.hstack((pose_gt_train[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_train[0].cpu().numpy().transpose().reshape((-1,1))))
         pose_test = np.hstack((pose_gt_test[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_test[0].cpu().numpy().transpose().reshape((-1,1))))

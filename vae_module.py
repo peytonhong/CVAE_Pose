@@ -4,6 +4,76 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
 
+# U-Net styled Extended Autoencoder
+class Extended_AE(nn.Module):
+    ''' Extended Autoencoder that includes skip connections as U-Net '''
+    def __init__(self, input_dim, z_dim, max_channel, PoseNet):
+        '''
+        Args:
+            input_dim: A integer indicating the size of input (in case of MNIST 28 * 28).
+            z_dim: A integer indicating the latent dimension.
+        '''
+        super().__init__()
+        self.max_channel = int(max_channel)
+        self.input_dim = input_dim
+        # self.fc_input_dim = int((input_dim[0]/16)*(input_dim[1]/16)*self.max_channel)
+        self.fc_input_dim = self.max_channel # for AveragePooling case
+        self.z_dim = z_dim
+        self.poseNet = PoseNet
+        
+        # Encoder
+        # self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv1 = nn.Conv2d(in_channels=3,                        out_channels=int(self.max_channel/8), kernel_size=5, stride=2, padding=2)
+        self.conv2 = nn.Conv2d(in_channels=int(self.max_channel/8),  out_channels=int(self.max_channel/4), kernel_size=5, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(in_channels=int(self.max_channel/4),  out_channels=int(self.max_channel/2), kernel_size=5, stride=2, padding=2)
+        self.conv4 = nn.Conv2d(in_channels=int(self.max_channel/2),  out_channels=int(self.max_channel),   kernel_size=5, stride=2, padding=2)
+        self.fc_enc = nn.Linear(in_features=self.fc_input_dim*4, out_features=z_dim)
+        self.avgpool = nn.AvgPool2d(kernel_size=4)
+        self.upconv = nn.ConvTranspose2d(in_channels=self.max_channel, out_channels=self.max_channel, kernel_size=4, stride=4, padding=0, output_padding=0)
+        
+        # self.bn1 = nn.BatchNorm2d(num_features=int(self.max_channel/8))
+        # self.bn2 = nn.BatchNorm2d(num_features=int(self.max_channel/4))
+        # self.bn3 = nn.BatchNorm2d(num_features=int(self.max_channel/2))
+        # self.bn4 = nn.BatchNorm2d(num_features=int(self.max_channel))
+
+        # Decoder
+        self.fc_dec = nn.Linear(in_features=self.z_dim, out_features=self.fc_input_dim*4)
+        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel*2),      out_channels=int(self.max_channel/2), kernel_size=5, stride=2, padding=2, output_padding=1)
+        self.dconv3 = nn.ConvTranspose2d(in_channels=int(self.max_channel*2/2),    out_channels=int(self.max_channel/4), kernel_size=5, stride=2, padding=2, output_padding=1)
+        self.dconv2 = nn.ConvTranspose2d(in_channels=int(self.max_channel*2/4),    out_channels=int(self.max_channel/8), kernel_size=5, stride=2, padding=2, output_padding=1)
+        self.dconv1 = nn.ConvTranspose2d(in_channels=int(self.max_channel*2/8),    out_channels=3,                       kernel_size=5, stride=2, padding=2, output_padding=1)
+
+        # self.bn_d4 = nn.BatchNorm2d(num_features=int(self.max_channel/2))
+        # self.bn_d3 = nn.BatchNorm2d(num_features=int(self.max_channel/4))
+        # self.bn_d2 = nn.BatchNorm2d(num_features=int(self.max_channel/8))
+        # self.bn_d1 = nn.BatchNorm2d(num_features=3)
+        
+    def forward(self, x):        
+        # Encoder
+        # x is of shape [batch_size, input_dim]
+        # hidden = F.relu(self.linear(x))
+        x_1 = F.relu(input=self.conv1(x))
+        x_2 = F.relu(input=self.conv2(x_1))
+        x_3 = F.relu(input=self.conv3(x_2))
+        x_4 = F.relu(input=self.conv4(x_3))
+        x_4_pooled = self.avgpool(x_4)
+        z = self.fc_enc(x_4_pooled.flatten(start_dim=1))
+        # z_mu = z[:, :self.z_dim]
+        # z_var = z[:, self.z_dim:]        
+        pose_est = self.poseNet(z)
+
+        # Decoder
+        # z_reshaped = self.fc_dec(z).view(-1, self.max_channel, int(self.input_dim[0]/16), int(self.input_dim[1]/16)) # [N, 512, 8, 8]
+        z_reshaped = self.fc_dec(z)
+        z_reshaped = F.relu(self.upconv(z_reshaped.view(-1, self.max_channel, 2, 2))) # [N, 512, 2, 2] --> [N, 512, 8, 8]
+        d_4 = F.relu(self.dconv4(torch.cat((z_reshaped, x_4), dim=1)))
+        d_3 = F.relu(self.dconv3(torch.cat((d_4, x_3), dim=1)))
+        d_2 = F.relu(self.dconv2(torch.cat((d_3, x_2), dim=1)))
+        d_1 = torch.sigmoid(self.dconv1(torch.cat((d_2, x_1), dim=1))) # reconstructed image
+
+        return d_1, z, pose_est
+
+
 class Encoder(nn.Module):
     ''' This the encoder part of VAE
 
@@ -30,7 +100,7 @@ class Encoder(nn.Module):
         self.conv4 = nn.Conv2d(in_channels=int(self.max_channel/2),  out_channels=int(self.max_channel),   kernel_size=3, stride=1, padding=1)
         # self.z_mu = nn.Linear(in_features=self.fc_input_dim, out_features=z_dim)
         # self.z_var= nn.Linear(in_features=self.fc_input_dim, out_features=z_dim)
-        self.fc= nn.Linear(in_features=self.fc_input_dim, out_features=z_dim*2)
+        self.fc= nn.Linear(in_features=self.fc_input_dim, out_features=z_dim)
         
     def forward(self, x):        
         # x is of shape [batch_size, input_dim]
@@ -48,7 +118,7 @@ class Encoder(nn.Module):
         # z_var = self.var(x)
         # z_var is of shape [batch_size, latent_dim]
 
-        return z_mu, z_var
+        return z, z_mu, z_var
 
 class Decoder(nn.Module):
     ''' This the decoder part of VAE
@@ -96,9 +166,12 @@ class Pose(nn.Module):
         self.fc2 = nn.Linear(in_features=100, out_features=100)
         self.fc3 = nn.Linear(in_features=100, out_features=9)
 
+        self.dropout1 = nn.Dropout(p=0.5)
+        self.dropout2 = nn.Dropout(p=0.3)
+
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = torch.tanh(self.fc2(x))
+        x = F.relu(self.dropout1(self.fc1(x)))
+        x = F.relu(self.dropout2(self.fc2(x)))
         x = self.fc3(x) # (N,9)
 
         # Rotation matrix refinement to make det(R)=1 (referenced from Geonho Cha's paper)
@@ -148,9 +221,9 @@ class AE(nn.Module):
         self.pose = pose
 
     def forward(self, x):
-        z_mu, z_var = self.enc(x)
-        predicted = self.dec(z_mu)
-        pose_estimate = self.pose(z_mu)
+        z, z_mu, z_var = self.enc(x)
+        predicted = self.dec(z)
+        pose_estimate = self.pose(z)
 
         return predicted, z_mu, z_var, pose_estimate
 
@@ -159,7 +232,7 @@ def to_polar(theta, theta_sym):
     sym_ratio = 360/theta_sym
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
-def generate_and_save_images(model, epoch, reconstructed_image_train, input_image_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test):
+def generate_and_save_images(args, model, epoch, reconstructed_image_train, input_image_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test):
     reconstructed_image_train = reconstructed_image_train.cpu().detach().numpy().transpose([0,2,3,1])
     input_image_train = input_image_train.cpu().detach().numpy().transpose([0,2,3,1])
     gt_image_train = gt_image_train.cpu().detach().numpy().transpose([0,2,3,1])
@@ -187,8 +260,11 @@ def generate_and_save_images(model, epoch, reconstructed_image_train, input_imag
     rendered_imgs_test_concat = np.hstack((rendered_imgs_test[0], horizontal_gap_small, rendered_imgs_test[1], horizontal_gap_small, rendered_imgs_test[2], horizontal_gap_small, rendered_imgs_test[3]))
     rendered_imgs_concat = np.hstack((rendered_imgs_train_concat, horizontal_gap_large, rendered_imgs_test_concat))
         
-    total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat, rendered_imgs_concat))
-    
+    if args.rendering:
+        total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat, rendered_imgs_concat))
+    else:
+        total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat))
+
     fig = plt.figure()
     plt.imshow(total_image)
     plt.axis('off')
