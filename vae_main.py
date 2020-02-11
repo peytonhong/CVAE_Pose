@@ -80,6 +80,18 @@ def bootstrapped_l2_loss(x, y, bootstrap_factor=4):
     batch_loss /= len(x)
     return batch_loss
 
+def R_loss(R_est, R_gt, device):
+    ''' Rotation matrix loss (axis-angle representation = Rodriges version)
+    R_est : [N, 9]
+    R_gt : [N, 9]
+    '''
+    R_est = R_est.view(-1, 3, 3)
+    R_gt = R_gt.view(-1, 3, 3)
+    # R_loss = torch.trace(torch.mean((torch.matmul(R_est, R_gt.transpose(1,2))-1)/2, dim=0))
+    I_batch = torch.tensor(np.array([np.eye(3) for _ in range(len(R_est))], dtype=np.float32).reshape((-1,3,3))).to(device)
+    R_loss = F.mse_loss(I_batch, torch.matmul(R_est, R_gt.transpose(1,2)))
+    return R_loss
+
 def train(model, dataset, device, optimizer, epoch, args):
     # set the train mode
     model.train()
@@ -120,7 +132,8 @@ def train(model, dataset, device, optimizer, epoch, args):
         # pose loss        
         # pose_est_polar = to_polar(pose_est, theta_sym=360)    
         # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
-        pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
+        # pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
+        pose_loss = R_loss(pose_est, pose_gt, device)
 
         # pointcloud rendering output loss
         if args.rendering:
@@ -192,7 +205,8 @@ def test(model, dataset, device, args, test_iter):
             # pose loss
             # pose_est_polar = to_polar(pose_est, theta_sym=360)    
             # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
-            pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
+            # pose_loss = F.mse_loss(pose_est, pose_gt, reduction='mean')
+            pose_loss = R_loss(pose_est, pose_gt, device)
 
             # pointcloud rendering output loss
             if args.rendering:
