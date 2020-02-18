@@ -103,7 +103,7 @@ def train(model, dataset, device, optimizer, epoch, args):
     rendering_loss_sum = 0
     for _, sampled_batch in enumerate(tqdm(dataset, desc=f"Training with batch size ({args.batch_size})")):
         x = sampled_batch['image_aug']
-        y = sampled_batch['image_gt_cropped']
+        y = sampled_batch['mask_cropped']
         pose_gt = sampled_batch['pose'] # (N,9)
         x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
         start_time = time.time()
@@ -118,11 +118,12 @@ def train(model, dataset, device, optimizer, epoch, args):
             # bootstrap_factor = bootstrap_factor if bootstrap_factor > 4 else 4
             recon_loss = bootstrapped_l2_loss(x_sample, y, bootstrap_factor=4) # Bootstrapped L2 loss for the 4 biggest pixels            
         else:
-            recon_loss = F.mse_loss(x_sample, y, reduction='mean')
+            # recon_loss = F.mse_loss(x_sample, y, reduction='mean')
+            recon_loss = F.binary_cross_entropy(x_sample, y, reduction='mean')
         
         # reconstruction loss for checking the effect of bootstrapped l2 loss
-        with torch.no_grad():
-            recon_loss_full_pixel = F.mse_loss(x_sample, y, reduction='mean')
+        # with torch.no_grad():
+        #     recon_loss_full_pixel = F.mse_loss(x_sample, y, reduction='mean')
         
         if args.vae_mode:    
             # kl divergence loss : the lower the better
@@ -138,7 +139,7 @@ def train(model, dataset, device, optimizer, epoch, args):
         # pointcloud rendering output loss
         if args.rendering:
             rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
-            rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), y, reduction='mean')
+            rendering_loss = F.mse_loss(torch.from_numpy(rendered_imgs).to(device), y, reduction='mean')
         # else:
         #     rendered_imgs = torch.ones_like(y).cpu().detach().numpy()
 
@@ -173,7 +174,7 @@ def train(model, dataset, device, optimizer, epoch, args):
         rendering_loss_sum += rendering_loss.item()*len(sampled_batch)
         rendering_loss_sum /= num_trained_data
 
-    return train_loss_sum, recon_loss_sum, pose_loss_sum, rendering_loss_sum, recon_loss_full_pixel
+    return train_loss_sum, recon_loss_sum, pose_loss_sum, rendering_loss_sum
 
 def test(model, dataset, device, args, test_iter):
     # set the evaluation mode
@@ -188,7 +189,7 @@ def test(model, dataset, device, args, test_iter):
     with torch.no_grad():
         for i, sampled_batch in enumerate(tqdm(dataset, desc=f" Testing with batch size ({args.batch_size})")):        
             x = sampled_batch['image_cropped']
-            y = sampled_batch['image_gt_cropped']
+            y = sampled_batch['mask_cropped']
             image_aug = sampled_batch['image_aug']
             pose_gt = sampled_batch['pose'] # (N,9)
             x, y, pose_gt = x.to(device), y.to(device), pose_gt.to(device)
@@ -196,7 +197,8 @@ def test(model, dataset, device, args, test_iter):
             x_sample, z_mu, z_var, pose_est = model(x)
             # x_sample, z, pose_est = model(x)
             # reconstruction loss
-            recon_loss = F.mse_loss(x_sample, y, reduction='mean')
+            # recon_loss = F.mse_loss(x_sample, y, reduction='mean')
+            recon_loss = F.binary_cross_entropy(x_sample, y, reduction='mean')
             if args.vae_mode:
                 # kl divergence loss
                 print(args.vae_mode)
@@ -211,7 +213,7 @@ def test(model, dataset, device, args, test_iter):
             # pointcloud rendering output loss
             if args.rendering:
                 rendered_imgs = get_rendering(dataset.dataset.obj_model, pose_est.cpu().detach().numpy(), dataset.dataset.cam_T, dataset.dataset.ren)
-                rendering_loss = F.mse_loss(torch.tensor(rendered_imgs).to(device), y, reduction='mean')
+                rendering_loss = F.mse_loss(torch.from_numpy(rendered_imgs).to(device), y, reduction='mean')
             else:
                 rendered_imgs = torch.ones_like(y).cpu().detach().numpy()
 
@@ -283,7 +285,7 @@ def main(args):
     # test_iterator = DataLoader(test_dataset, batch_size=BATCH_SIZE)
     transform = transforms.Compose([ToTensor()])
     lm_dataset_train = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='train', object_number=9, transform=transform, augmentation=True, rendering=args.rendering, use_offline_data=False, use_useful_data=True) # for duck object
-    lm_dataset_test = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='test', object_number=9, transform=transform, augmentation=False, rendering=args.rendering, use_offline_data=True, use_useful_data=False) # for duck object
+    lm_dataset_test = LineModDataset(root_dir=lm_path, background_dir=coco_path, task='test', object_number=9, transform=transform, augmentation=False, rendering=args.rendering, use_offline_data=False, use_useful_data=False) # for duck object
     train_iterator = DataLoader(dataset=lm_dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     test_iterator = DataLoader(dataset=lm_dataset_test, batch_size=BATCH_SIZE, shuffle=True)
     sample_iterator_train = DataLoader(dataset=lm_dataset_train, batch_size=4, shuffle=True)
@@ -359,7 +361,7 @@ def main(args):
         for e in range(N_EPOCHS):
 
             start_time = time.time()
-            train_loss, recon_loss_train, pose_loss_train, rendering_loss_train, recon_loss_train_full = train(model, train_iterator, device, optimizer, e, args)
+            train_loss, recon_loss_train, pose_loss_train, rendering_loss_train = train(model, train_iterator, device, optimizer, e, args)
             train_time = time.time() - start_time
             start_time = time.time()
             test_loss, recon_loss_test, pose_loss_test, rendering_loss_test, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)            

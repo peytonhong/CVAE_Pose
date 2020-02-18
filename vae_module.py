@@ -141,7 +141,7 @@ class Decoder(nn.Module):
         self.dconv1 = nn.ConvTranspose2d(in_channels=int(self.max_channel),      out_channels=int(self.max_channel/2), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv2 = nn.ConvTranspose2d(in_channels=int(self.max_channel/2),    out_channels=int(self.max_channel/4), kernel_size=3, stride=2, padding=1, output_padding=1)
         self.dconv3 = nn.ConvTranspose2d(in_channels=int(self.max_channel/4),    out_channels=int(self.max_channel/8), kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=3,   kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.dconv4 = nn.ConvTranspose2d(in_channels=int(self.max_channel/8),    out_channels=1,   kernel_size=3, stride=2, padding=1, output_padding=1)
         
     def forward(self, x):
         # x is of shape [batch_size, latent_dim]
@@ -233,14 +233,27 @@ def to_polar(theta, theta_sym):
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
 
 def generate_and_save_images(args, model, epoch, reconstructed_image_train, input_image_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test):
-    reconstructed_image_train = reconstructed_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+    if reconstructed_image_train.shape[1] == 3: # color image [N, 3, H, W]
+        reconstructed_image_train = reconstructed_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+        reconstructed_image_test = reconstructed_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+        gt_image_train = gt_image_train.cpu().detach().numpy().transpose([0,2,3,1])
+        gt_image_test = gt_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+        rendered_imgs_train = rendered_imgs_train.transpose([0,2,3,1])
+        rendered_imgs_test = rendered_imgs_test.transpose([0,2,3,1])
+    elif reconstructed_image_train.shape[1] == 1: # mask image [N, 1, H, W] --> [N, H, W, 3]
+        reconstructed_image_train = np.stack((reconstructed_image_train.cpu().detach().numpy().squeeze(),)*3, axis=-1)
+        reconstructed_image_test = np.stack((reconstructed_image_test.cpu().detach().numpy().squeeze(),)*3, axis=-1)
+        gt_image_train = np.stack((gt_image_train.cpu().detach().numpy().squeeze(),)*3, axis=-1)
+        gt_image_test = np.stack((gt_image_test.cpu().detach().numpy().squeeze(),)*3, axis=-1)
+        rendered_imgs_train = np.stack((rendered_imgs_train.squeeze(),)*3, axis=-1)
+        rendered_imgs_test = np.stack((rendered_imgs_test.squeeze(),)*3, axis=-1)
+
     input_image_train = input_image_train.cpu().detach().numpy().transpose([0,2,3,1])
-    gt_image_train = gt_image_train.cpu().detach().numpy().transpose([0,2,3,1])
-    reconstructed_image_test = reconstructed_image_test.cpu().detach().numpy().transpose([0,2,3,1])
+    
+    
     input_image_test = input_image_test.cpu().detach().numpy().transpose([0,2,3,1])
-    gt_image_test = gt_image_test.cpu().detach().numpy().transpose([0,2,3,1])
-    rendered_imgs_train = rendered_imgs_train.transpose([0,2,3,1])
-    rendered_imgs_test = rendered_imgs_test.transpose([0,2,3,1])
+    
+    
 
     horizontal_gap_large = np.ones((128,32,3))
     horizontal_gap_small = np.ones((128,8,3))

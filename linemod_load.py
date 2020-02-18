@@ -112,7 +112,7 @@ class LineModDataset(Dataset):
             image_aug = cv2.imread(str(self.images_aug[idx]))
             label = int(self.images_aug[idx].stem[:6])
             image_cropped = cv2.imread(str(self.cropped_image_path / f'{label:06}.png'))
-            mask_cropped = cv2.imread(str(self.cropped_mask_path / f'{label:06}.png'))
+            mask_cropped = cv2.imread(str(self.cropped_mask_path / f'{label:06}.png'), flags=cv2.IMREAD_GRAYSCALE)
             image_gt_cropped = cv2.imread(str(self.gt_image_path / f'{label:06}.png'))
             image = cv2.imread(self.images[label])
             pose = self.R_matrix[label].astype(np.float32)
@@ -211,7 +211,7 @@ class LineModDataset(Dataset):
             image_aug = self.image_augmentation_color_change(image_aug) # gamma correction
             image_aug = self.image_augmentation_scale_and_position(image_aug, mask_cropped, random_background=True)
             image_aug = self.image_augmentation_random_circle(copy.deepcopy(image_aug))
-            image_aug = self.image_augmentation_blur(image_aug)            
+            image_aug = self.image_augmentation_blur(image_aug)
         else:
             image_aug = image_cropped
         pose = self.R_matrix[idx].astype(np.float32)
@@ -343,7 +343,7 @@ class ToTensor(object):
         image_gt_cropped = image_gt_cropped.transpose((2, 0, 1))
         return {'image': torch.from_numpy(image),
                 'image_cropped': torch.from_numpy(image_cropped),
-                'mask_cropped': mask_cropped,
+                'mask_cropped': torch.from_numpy((mask_cropped == 255).astype(np.float32).reshape(-1, 128, 128)),
                 'image_aug': torch.from_numpy(image_aug),
                 'image_gt_cropped': image_gt_cropped,
                 'pose': torch.from_numpy(pose)}
