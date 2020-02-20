@@ -88,7 +88,7 @@ def R_loss(R_est, R_gt, device):
     R_est = R_est.view(-1, 3, 3)
     R_gt = R_gt.view(-1, 3, 3)
     # R_loss = torch.trace(torch.mean((torch.matmul(R_est, R_gt.transpose(1,2))-1)/2, dim=0))
-    I_batch = torch.tensor(np.array([np.eye(3) for _ in range(len(R_est))], dtype=np.float32).reshape((-1,3,3))).to(device)
+    I_batch = torch.from_numpy(np.array([np.eye(3) for _ in range(len(R_est))], dtype=np.float32).reshape((-1,3,3))).to(device)
     R_loss = F.mse_loss(I_batch, torch.matmul(R_est, R_gt.transpose(1,2)))
     return R_loss
 

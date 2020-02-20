@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 # U-Net styled Extended Autoencoder
 class Extended_AE(nn.Module):
@@ -277,6 +278,9 @@ def generate_and_save_images(args, model, epoch, reconstructed_image_train, inpu
         total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat, rendered_imgs_concat))
     else:
         total_image = np.vstack((input_image_concat, gt_image_concat, reconstructed_image_concat))
+
+    if not os.path.isdir("./results"):
+        os.mkdir("./results")
 
     fig = plt.figure()
     plt.imshow(total_image)
