@@ -12,8 +12,6 @@ import os
 import copy
 from tqdm import tqdm
 from plyfile import PlyData
-from rendering.renderer_xyz import Renderer
-from rendering.model import Model3D
 from sys import platform
 import time
 
@@ -81,6 +79,8 @@ class LineModDataset(Dataset):
 
         # pointcloud model data import
         if self.rendering:
+            from rendering.renderer_xyz import Renderer
+            from rendering.model import Model3D
             model_path = str(self.root_dir / 'models' / f'obj_{object_number:06d}.ply')
             if platform == 'win32': # only for Windows
                 model_path = model_path.replace(os.sep, os.altsep) # replace '\' to '/'
