@@ -32,4 +32,5 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 
 ### Rotation loss comparison
 * Before pose refinement: 0.170
+* After pose refinement: TODO
 
