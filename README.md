@@ -27,6 +27,9 @@ Convolutional (Variational) Autoencoder for object pose estimation (Pytorch vers
 * 2nd row: Ground truth
 * 3rd row: Reconstructed images
 
+### Pose Refinement using Pytorch3D
+![pose refinement](https://github.com/peytonhong/CVAE_Pose/blob/master/docs/obj_optimization_demo.gif)
+
 ### Rotation loss comparison
-* Only from input images: 0.170
+* Before pose refinement: 0.170
 
