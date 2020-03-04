@@ -92,6 +92,30 @@ def R_loss(R_est, R_gt, device):
     R_loss = F.mse_loss(I_batch, torch.matmul(R_est, R_gt.transpose(1,2)))
     return R_loss
 
+def R_to_spherical(R, dist=0.4):
+    '''
+    Convert Rotation matrix R into Spherical coordinate elements (Distance, Elevation, Azimuth)    
+    Input:
+        R: Estimated rotation matrix
+        dist: given distance from object(origin) to camera
+    Output:
+        elev: Elevation
+        azim: Azimuth
+    '''
+    z_axis = R[:,:,-1]
+    camera_position = -z_axis * dist
+    elev = torch.asin(camera_position[:,1]/dist)
+    azim = torch.asin(camera_position[:,0]/(dist*torch.cos(elev)))
+    return dist, elev, azim
+
+
+# def silhouettete_matching(pose_est):
+
+
+
+
+
+
 def train(model, dataset, device, optimizer, epoch, args):
     # set the train mode
     model.train()
@@ -176,7 +200,7 @@ def train(model, dataset, device, optimizer, epoch, args):
 
     return train_loss_sum, recon_loss_sum, pose_loss_sum, rendering_loss_sum
 
-def test(model, dataset, device, args, test_iter):
+def test(model, dataset, device, args, test_iter=None, refine=False):
     # set the evaluation mode
     model.eval()
     num_tested_data = 0
@@ -204,6 +228,9 @@ def test(model, dataset, device, args, test_iter):
                 print(args.vae_mode)
                 # kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
             
+            if refine:
+                print('Silhouettete_matching')
+
             # pose loss
             # pose_est_polar = to_polar(pose_est, theta_sym=360)    
             # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
@@ -431,7 +458,7 @@ def main(args):
         print(f'Pose estimation result (test: [GT , Estimation])')
         print(f'{pose_test}')
 
-        test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)
+        test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None, refine=True)
         
         print(f'Test Loss: {test_loss:.6f}, R matrix Loss: {pose_loss_test:.6f}')
         
