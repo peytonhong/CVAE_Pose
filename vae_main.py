@@ -17,6 +17,29 @@ import configparser
 from pathlib import Path
 from tqdm import tqdm
 import cv2
+from pytorch3d.io import load_obj
+from pytorch3d.structures import Meshes, Textures
+from pytorch3d.renderer import (
+    OpenGLPerspectiveCameras, look_at_view_transform, look_at_rotation, 
+    RasterizationSettings, MeshRenderer, MeshRasterizer, BlendParams,
+    SilhouetteShader, PhongShader, PointLights
+)
+
+def R_to_spherical(R, dist=120):
+    '''
+    Convert Rotation matrix R into Spherical coordinate elements (Distance, Elevation, Azimuth)    
+    Input:
+        R: Estimated rotation matrix
+        dist: given distance from object(origin) to camera
+    Output:
+        elev: Elevation
+        azim: Azimuth
+    '''
+    z_axis = R.view(-1,3,3)[:,:,-1]
+    camera_position = -z_axis * dist
+    elev = torch.asin(camera_position[:,1]/dist)
+    azim = torch.asin(camera_position[:,0]/(dist*torch.cos(elev)))
+    return torch.ones_like(elev)*dist, elev*180/np.pi, azim*180/np.pi
 
 def str2bool(v):
     # Converts True or False for argparse
@@ -36,7 +59,7 @@ def argparse_args():
   parser.add_argument('command', help="'train' or 'evaluate'")
   parser.add_argument('--latent_dim', default=128, type=int, help="Dimension of latent vector")
   parser.add_argument('--num_epochs', default=500, type=int, help="The number of epochs to run")
-  parser.add_argument('--batch_size', default=200, type=int, help="The number of batchs for each epoch")
+  parser.add_argument('--batch_size', default=100, type=int, help="The number of batchs for each epoch")
   parser.add_argument('--max_channel', default=512, type=int, help="The maximum number of channels in Encoder/Decoder")
   parser.add_argument('--rendering', default=False, type=str2bool, help="True: Use rendering images from pointcloud model")
   parser.add_argument('--vae_mode', default=False, type=str2bool, help="True: Enable Variational Autoencoder, False: Autoencoder")
@@ -91,29 +114,6 @@ def R_loss(R_est, R_gt, device):
     I_batch = torch.from_numpy(np.array([np.eye(3) for _ in range(len(R_est))], dtype=np.float32).reshape((-1,3,3))).to(device)
     R_loss = F.mse_loss(I_batch, torch.matmul(R_est, R_gt.transpose(1,2)))
     return R_loss
-
-def R_to_spherical(R, dist=0.4):
-    '''
-    Convert Rotation matrix R into Spherical coordinate elements (Distance, Elevation, Azimuth)    
-    Input:
-        R: Estimated rotation matrix
-        dist: given distance from object(origin) to camera
-    Output:
-        elev: Elevation
-        azim: Azimuth
-    '''
-    z_axis = R[:,:,-1]
-    camera_position = -z_axis * dist
-    elev = torch.asin(camera_position[:,1]/dist)
-    azim = torch.asin(camera_position[:,0]/(dist*torch.cos(elev)))
-    return dist, elev, azim
-
-
-# def silhouettete_matching(pose_est):
-
-
-
-
 
 
 def train(model, dataset, device, optimizer, epoch, args):
@@ -200,7 +200,8 @@ def train(model, dataset, device, optimizer, epoch, args):
 
     return train_loss_sum, recon_loss_sum, pose_loss_sum, rendering_loss_sum
 
-def test(model, dataset, device, args, test_iter=None, refine=False):
+def test(model, dataset, device, args, test_iter=None):
+          
     # set the evaluation mode
     model.eval()
     num_tested_data = 0
@@ -228,9 +229,6 @@ def test(model, dataset, device, args, test_iter=None, refine=False):
                 print(args.vae_mode)
                 # kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
             
-            if refine:
-                print('Silhouettete_matching')
-
             # pose loss
             # pose_est_polar = to_polar(pose_est, theta_sym=360)    
             # pose_gt_polar = to_polar(pose_gt, theta_sym=360)
@@ -451,14 +449,14 @@ def main(args):
         _, _, _, _, pose_est_test, pose_gt_test, reconstructed_image_test, input_image_test, gt_image_test, image_aug_test, rendered_imgs_test = test(model, sample_iterator_test, device, args, test_iter=0)
         generate_and_save_images(args, model, 9999, reconstructed_image_train, image_aug_train, gt_image_train, rendered_imgs_train, reconstructed_image_test, input_image_test, gt_image_test, rendered_imgs_test)
         
-        pose_train = np.hstack((pose_gt_train[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_train[0].cpu().numpy().transpose().reshape((-1,1))))
-        pose_test = np.hstack((pose_gt_test[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_test[0].cpu().numpy().transpose().reshape((-1,1))))
+        pose_train = np.hstack((pose_gt_train[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_train[0].cpu().detach().numpy().transpose().reshape((-1,1))))
+        pose_test = np.hstack((pose_gt_test[0].cpu().numpy().transpose().reshape((-1,1)), pose_est_test[0].cpu().detach().numpy().transpose().reshape((-1,1))))
         print(f'Pose estimation result (train: [GT , Estimation])')
         print(f'{pose_train}')
         print(f'Pose estimation result (test: [GT , Estimation])')
         print(f'{pose_test}')
 
-        test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None, refine=True)
+        test_loss, recon_loss_test, pose_loss_test, _, _, _, _, _, _, _, _ = test(model, test_iterator, device, args, test_iter=None)
         
         print(f'Test Loss: {test_loss:.6f}, R matrix Loss: {pose_loss_test:.6f}')
         

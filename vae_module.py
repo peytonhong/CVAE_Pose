@@ -229,34 +229,6 @@ class AE(nn.Module):
         return predicted, z_mu, z_var, pose_estimate
 
 
-class Model(nn.Module):
-    def __init__(self, meshes, renderer, image_ref):
-        super().__init__()
-        self.meshes = meshes
-        self.device = meshes.device
-        self.renderer = renderer
-        
-        # Get the silhouette of the reference RGB image by finding all the non zero values. 
-#         self.image_ref = torch.from_numpy((image_ref[..., :3].max(-1) != 0).astype(np.float32))
-        self.image_ref = image_ref[..., 3]
-#         self.register_buffer('image_ref', image_ref)
-        
-        # Select the viewpoint using spherical angles  
-        self.distance = nn.Parameter(torch.tensor(150.))   # distance from camera to the object
-        self.elevation = nn.Parameter(torch.tensor(40.0))   # angle of elevation in degrees
-        self.azimuth = nn.Parameter(torch.tensor(30.0))      # angle of azimuth rotation in degrees       
-
-    def forward(self):        
-        # Get the position of the camera based on the spherical angles
-        R, T = look_at_view_transform(self.distance, self.elevation, self.azimuth, device=device)
-        image = self.renderer(meshes_world=self.meshes.clone(), R=R, T=T)
-
-        # Calculate the silhouette loss
-        loss = torch.sum((image[..., 3] - self.image_ref) ** 2) # input: sihouette, target: phong
-        return loss, image, R, T
-
-        
-
 def to_polar(theta, theta_sym):
     sym_ratio = 360/theta_sym
     return torch.cat((torch.cos(theta*sym_ratio), torch.sin(theta*sym_ratio)), axis=0)
